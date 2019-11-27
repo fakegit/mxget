@@ -11,7 +11,7 @@ import (
 )
 
 type (
-	// Response wraps the raw HTTP response and the potential error.
+	// Response wraps the raw HTTP response.
 	Response struct {
 		RawResponse *http.Response
 		Err         error

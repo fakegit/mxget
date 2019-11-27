@@ -126,11 +126,6 @@ type (
 func New(client *sreq.Client) *API {
 	if client == nil {
 		client = sreq.New(nil)
-		client.SetGlobalRequestOpts(
-			sreq.WithHeaders(sreq.Headers{
-				"User-Agent": request.UserAgent,
-			}),
-		)
 	}
 	return &API{
 		Client: client,
@@ -195,9 +190,10 @@ func (a *API) Request(method string, url string, opts ...sreq.RequestOption) *sr
 
 	defaultOpts := []sreq.RequestOption{
 		sreq.WithHeaders(sreq.Headers{
-			"csrf":    csrf,
-			"Origin":  "http://www.kuwo.cn",
-			"Referer": "http://www.kuwo.cn",
+			"csrf":       csrf,
+			"Origin":     "http://www.kuwo.cn",
+			"Referer":    "http://www.kuwo.cn",
+			"User-Agent": request.UserAgent,
 		}),
 	}
 

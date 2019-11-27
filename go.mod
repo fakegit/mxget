@@ -11,7 +11,7 @@ require (
 	github.com/spf13/cobra v0.0.3
 	github.com/spf13/pflag v1.0.3 // indirect
 	github.com/winterssy/easylog v0.0.0-20191102150735-59430c1270ea
-	github.com/winterssy/sreq v0.0.0-20191127075256-ae6b15746ccb
+	github.com/winterssy/sreq v0.0.0-20191127103117-48ee7bba76ef
 	golang.org/x/net v0.0.0-20191126235420-ef20fe5d7933 // indirect
 	golang.org/x/sys v0.0.0-20191113165036-4c7a9d0fe056 // indirect
 	golang.org/x/text v0.3.2

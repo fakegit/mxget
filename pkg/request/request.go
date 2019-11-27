@@ -7,17 +7,8 @@ const (
 )
 
 var (
-	std *sreq.Client
-)
-
-func init() {
 	std = sreq.New(nil)
-	std.SetGlobalRequestOpts(
-		sreq.WithHeaders(sreq.Headers{
-			"User-Agent": UserAgent,
-		}),
-	)
-}
+)
 
 func Client() *sreq.Client {
 	return std

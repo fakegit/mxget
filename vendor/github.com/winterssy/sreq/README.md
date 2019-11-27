@@ -58,7 +58,6 @@ See more examples as follow.
 - [Upload Files](#Upload-Files)
 - [Set Basic Authentication](#Set-Basic-Authentication)
 - [Set Bearer Token](#Set-Bearer-Token)
-- [Set Global Request Options](#Set-Global-Request-Options)
 - [Customize HTTP Client](#Customize-HTTP-Client)
 - [Concurrent Safe](#Concurrent-Safe)
 
@@ -191,26 +190,6 @@ data, err := sreq.
     Get("http://httpbin.org/bearer",
         sreq.WithBearerToken("sreq"),
        ).
-    Text()
-if err != nil {
-    panic(err)
-}
-fmt.Println(data)
-```
-
-## Set Global Request Options
-
-If you want to set some request options used by per HTTP request, you can do like this:
-
-```go
-sreq.SetGlobalRequestOpts(
-    sreq.WithQuery(sreq.Params{
-        "defaultKey1": "defaultValue1",
-        "defaultKey2": "defaultValue2",
-    }),
-)
-data, err := sreq.
-    Get("http://httpbin.org/get").
     Text()
 if err != nil {
     panic(err)

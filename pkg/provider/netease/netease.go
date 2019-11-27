@@ -164,11 +164,6 @@ func init() {
 func New(client *sreq.Client) *API {
 	if client == nil {
 		client = sreq.New(nil)
-		client.SetGlobalRequestOpts(
-			sreq.WithHeaders(sreq.Headers{
-				"User-Agent": request.UserAgent,
-			}),
-		)
 	}
 	return &API{
 		Client: client,
@@ -221,8 +216,9 @@ func (e *LoginResponse) String() string {
 func (a *API) Request(method string, url string, opts ...sreq.RequestOption) *sreq.Response {
 	defaultOpts := []sreq.RequestOption{
 		sreq.WithHeaders(sreq.Headers{
-			"Origin":  "https://music.163.com",
-			"Referer": "https://music.163.com",
+			"Origin":     "https://music.163.com",
+			"Referer":    "https://music.163.com",
+			"User-Agent": request.UserAgent,
 		}),
 	}
 

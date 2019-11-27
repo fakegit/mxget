@@ -47,7 +47,7 @@ const (
 )
 
 type (
-	// Request wraps the raw HTTP request and some customized settings.
+	// Request wraps the raw HTTP request.
 	Request struct {
 		RawRequest *http.Request
 
@@ -75,16 +75,6 @@ func (c *Client) newRequest(method string, url string, opts ...RequestOption) (*
 	req := &Request{
 		RawRequest: rawRequest,
 	}
-
-	c.mux.RLock()
-	for _, opt := range c.globalRequestOpts {
-		req, err = opt(req)
-		if err != nil {
-			c.mux.RUnlock()
-			return nil, err
-		}
-	}
-	c.mux.RUnlock()
 
 	for _, opt := range opts {
 		req, err = opt(req)

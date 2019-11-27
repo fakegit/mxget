@@ -58,7 +58,6 @@ resp, err := sreq.Get("http://www.baidu.com").Resolve()
 - [上传文件](#上传文件)
 - [设置Basic认证](#设置Basic认证)
 - [设置Bearer令牌](#设置Bearer令牌)
-- [设置全局请求选项](#设置全局请求选项)
 - [自定义HTTP客户端](#自定义HTTP客户端)
 - [并发安全](#并发安全)
 
@@ -191,26 +190,6 @@ data, err := sreq.
     Get("http://httpbin.org/bearer",
         sreq.WithBearerToken("sreq"),
        ).
-    Text()
-if err != nil {
-    panic(err)
-}
-fmt.Println(data)
-```
-
-### 设置全局请求选项
-
-如果你希望每个HTTP请求都带上一些请求选项，可以这样做：
-
-```go
-sreq.SetGlobalRequestOpts(
-    sreq.WithQuery(sreq.Params{
-        "defaultKey1": "defaultValue1",
-        "defaultKey2": "defaultValue2",
-    }),
-)
-data, err := sreq.
-    Get("http://httpbin.org/get").
     Text()
 if err != nil {
     panic(err)

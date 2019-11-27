@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	stdurl "net/url"
-	"sync"
 	"time"
 
 	"golang.org/x/net/publicsuffix"
@@ -15,12 +14,9 @@ import (
 var std = New(nil)
 
 type (
-	// Client wraps the raw HTTP client and the global request options.
+	// Client wraps the raw HTTP client.
 	Client struct {
 		RawClient *http.Client
-
-		globalRequestOpts []RequestOption
-		mux               sync.RWMutex
 	}
 )
 
@@ -66,42 +62,6 @@ func New(httpClient *http.Client) *Client {
 	return &Client{
 		RawClient: rawClient,
 	}
-}
-
-// SetGlobalRequestOpts sets the global request options.
-func SetGlobalRequestOpts(opts ...RequestOption) {
-	std.SetGlobalRequestOpts(opts...)
-}
-
-// SetGlobalRequestOpts sets the global request options.
-func (c *Client) SetGlobalRequestOpts(opts ...RequestOption) {
-	c.mux.Lock()
-	c.globalRequestOpts = opts
-	c.mux.Unlock()
-}
-
-// AddGlobalRequestOpts appends the global request options.
-func AddGlobalRequestOpts(opts ...RequestOption) {
-	std.AddGlobalRequestOpts(opts...)
-}
-
-// AddGlobalRequestOpts appends the global request options.
-func (c *Client) AddGlobalRequestOpts(opts ...RequestOption) {
-	c.mux.Lock()
-	c.globalRequestOpts = append(c.globalRequestOpts, opts...)
-	c.mux.Unlock()
-}
-
-// ClearGlobalRequestOpts clears the global request options.
-func ClearGlobalRequestOpts() {
-	std.ClearGlobalRequestOpts()
-}
-
-// ClearGlobalRequestOpts clears the global request options.
-func (c *Client) ClearGlobalRequestOpts() {
-	c.mux.Lock()
-	c.globalRequestOpts = nil
-	c.mux.Unlock()
 }
 
 // FilterCookies returns the cookies to send in a request for the given URL.

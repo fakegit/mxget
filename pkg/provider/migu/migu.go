@@ -187,11 +187,6 @@ type (
 func New(client *sreq.Client) *API {
 	if client == nil {
 		client = sreq.New(nil)
-		client.SetGlobalRequestOpts(
-			sreq.WithHeaders(sreq.Headers{
-				"User-Agent": request.UserAgent,
-			}),
-		)
 	}
 	return &API{
 		Client: client,
@@ -252,9 +247,10 @@ func (p *PlaylistResponse) String() string {
 func (a *API) Request(method string, url string, opts ...sreq.RequestOption) *sreq.Response {
 	defaultOpts := []sreq.RequestOption{
 		sreq.WithHeaders(sreq.Headers{
-			"channel": "0",
-			"Origin":  "http://music.migu.cn/v3",
-			"Referer": "http://music.migu.cn/v3",
+			"channel":    "0",
+			"Origin":     "http://music.migu.cn/v3",
+			"Referer":    "http://music.migu.cn/v3",
+			"User-Agent": request.UserAgent,
 		}),
 	}
 	opts = append(opts, defaultOpts...)
