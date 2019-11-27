@@ -27,9 +27,9 @@ github.com/spf13/cobra
 github.com/spf13/pflag
 # github.com/winterssy/easylog v0.0.0-20191102150735-59430c1270ea
 github.com/winterssy/easylog
-# github.com/winterssy/sreq v0.0.0-20191123030039-712d4bb9bc2a
+# github.com/winterssy/sreq v0.0.0-20191127075256-ae6b15746ccb
 github.com/winterssy/sreq
-# golang.org/x/net v0.0.0-20191119073136-fc4aabc6c914
+# golang.org/x/net v0.0.0-20191126235420-ef20fe5d7933
 golang.org/x/net/http/httpguts
 golang.org/x/net/http2
 golang.org/x/net/http2/hpack
@@ -44,6 +44,7 @@ golang.org/x/text/encoding
 golang.org/x/text/encoding/charmap
 golang.org/x/text/encoding/internal
 golang.org/x/text/encoding/internal/identifier
+golang.org/x/text/encoding/simplifiedchinese
 golang.org/x/text/encoding/unicode
 golang.org/x/text/internal/utf8internal
 golang.org/x/text/runes

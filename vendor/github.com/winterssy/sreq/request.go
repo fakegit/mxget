@@ -356,31 +356,32 @@ func WithFiles(files Files) RequestOption {
 			}
 		}
 
-		r, w := io.Pipe()
-		mw := multipart.NewWriter(w)
+		pr, pw := io.Pipe()
+		mw := multipart.NewWriter(pw)
 		go func() {
-			defer w.Close()
+			defer pw.Close()
 			defer mw.Close()
 
 			for fieldName, filePath := range files {
 				fileName := filepath.Base(filePath)
 				part, err := mw.CreateFormFile(fieldName, fileName)
 				if err != nil {
-					return
+					continue
 				}
+
 				file, err := os.Open(filePath)
 				if err != nil {
-					return
+					continue
 				}
 
 				_, err = io.Copy(part, file)
 				if err != nil || file.Close() != nil {
-					return
+					continue
 				}
 			}
 		}()
 
-		req.RawRequest.Body = r
+		req.RawRequest.Body = ioutil.NopCloser(pr)
 		req.RawRequest.Header.Set("Content-Type", mw.FormDataContentType())
 		return req, nil
 	}

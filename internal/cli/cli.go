@@ -66,7 +66,7 @@ func ConcurrentDownload(ctx context.Context, client provider.API, savePath strin
 					sreq.WithContext(ctx),
 					sreq.WithRetry(3, 1*time.Second),
 				).
-				Save(mp3FilePath)
+				Save(mp3FilePath, 0664)
 			if err != nil {
 				easylog.Errorf("Download [%s] failed: %v", songInfo, err)
 				_ = os.Remove(mp3FilePath)
