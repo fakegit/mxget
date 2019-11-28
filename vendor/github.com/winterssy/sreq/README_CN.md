@@ -16,9 +16,10 @@
 - 简便地设置查询参数，请求头，或者Cookies。
 - 简便地发送Form表单，JSON数据，或者上传文件。
 - 简便地设置Basic认证，Bearer令牌。
-- 自动管理Cookies。
-- 自定义HTTP客户端。
+- 简便地设置代理。
 - 简便地设置请求上下文。
+- 会话支持。
+- 自定义HTTP客户端。
 - 简便地对响应解码，输出字节码，字符串，或者对JSON反序列化。
 - 并发安全。
 
@@ -58,6 +59,8 @@ resp, err := sreq.Get("http://www.baidu.com").Resolve()
 - [上传文件](#上传文件)
 - [设置Basic认证](#设置Basic认证)
 - [设置Bearer令牌](#设置Bearer令牌)
+- [设置代理](#设置代理)
+- [会话支持](#会话支持)
 - [自定义HTTP客户端](#自定义HTTP客户端)
 - [并发安全](#并发安全)
 
@@ -67,8 +70,8 @@ resp, err := sreq.Get("http://www.baidu.com").Resolve()
 data, err := sreq.
     Get("http://httpbin.org/get",
         sreq.WithQuery(sreq.Params{
-            "key1": "value1",
-            "key2": "value2",
+            "k1": "v1",
+            "k2": "v2",
         }),
        ).
     Text()
@@ -102,12 +105,12 @@ data, err := sreq.
     Get("http://httpbin.org/cookies",
         sreq.WithCookies(
             &http.Cookie{
-                Name:  "name1",
-                Value: "value1",
+                Name:  "n1",
+                Value: "v1",
             },
             &http.Cookie{
-                Name:  "name2",
-                Value: "value2",
+                Name:  "n2",
+                Value: "v2",
             },
         ),
        ).
@@ -124,8 +127,8 @@ fmt.Println(data)
 data, err := sreq.
     Post("http://httpbin.org/post",
          sreq.WithForm(sreq.Form{
-             "key1": "value1",
-             "key2": "value2",
+             "k1": "v1",
+             "k2": "v2",
          }),
         ).
     Text()
@@ -197,13 +200,44 @@ if err != nil {
 fmt.Println(data)
 ```
 
+### 设置代理
+
+```go
+client, _ := sreq.New(nil,
+	sreq.ProxyFromURL("socks5://127.0.0.1:1080"),
+)
+data, err := client.
+    Get("https://api.ipify.org?format=json").
+    Text()
+if err != nil {
+    panic(err)
+}
+fmt.Println(data)
+```
+
+### 会话支持
+
+如果你希望在 `sreq` 的生命周期内保持会话，你只须在构造 `*sreq.Client` 时调用 `EnableSession` 方法。
+
+```go
+client, _ := sreq.New(nil,
+	sreq.EnableSession(),
+)
+data, err := client.
+    Get("http://httpbin.org/get").
+    Text()
+if err != nil {
+    panic(err)
+}
+fmt.Println(data)
+```
+
 ### 自定义HTTP客户端
 
-`sreq` 没有提供直接修改传输层、重定向策略、cookie jar、超时、代理或者其它能通过构造 `*http.Client` 实现配置的API，你可以通过自定义 `sreq` 客户端来设置它们。
+高级用法你可以通过自定义的 `*http.Client` 构造一个 `*sreq.Client` 实例来实现，`sreq` 同时提供了一些有用的API来帮助你完成这件事，更多详情请阅读API文档。
 
 ```go
 transport := &http.Transport{
-    Proxy: http.ProxyFromEnvironment,
     DialContext: (&net.Dialer{
         Timeout:   30 * time.Second,
         KeepAlive: 30 * time.Second,
@@ -213,25 +247,26 @@ transport := &http.Transport{
     TLSHandshakeTimeout:   10 * time.Second,
     ExpectContinueTimeout: 1 * time.Second,
 }
-redirectPolicy := func(req *http.Request, via []*http.Request) error {
+policy := func(req *http.Request, via []*http.Request) error {
     return http.ErrUseLastResponse
 }
 jar, _ := cookiejar.New(&cookiejar.Options{
     PublicSuffixList: publicsuffix.List,
 })
-timeout := 120 * time.Second
 
-httpClient := &http.Client{
-    Transport:     transport,
-    CheckRedirect: redirectPolicy,
-    Jar:           jar,
-    Timeout:       timeout,
+client, err := sreq.New(transport,
+	sreq.WithRedirectPolicy(policy),
+	sreq.WithCookieJar(jar),
+	sreq.WithTimeout(120*time.Second),
+	sreq.ProxyFromURL("socks5://127.0.0.1:1080"),
+)
+if err != nil {
+    panic(err)
 }
 
-req := sreq.New(httpClient)
-data, err := req.
-    Get("http://httpbin.org/get").
-    Text()
+data, err := client.
+	Get("https://www.google.com").
+	Text()
 if err != nil {
     panic(err)
 }

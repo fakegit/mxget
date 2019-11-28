@@ -186,7 +186,10 @@ type (
 
 func New(client *sreq.Client) *API {
 	if client == nil {
-		client = sreq.New(nil)
+		client, _ = sreq.New(nil,
+			sreq.EnableSession(),
+			sreq.WithTimeout(sreq.DefaultTimeout),
+		)
 	}
 	return &API{
 		Client: client,

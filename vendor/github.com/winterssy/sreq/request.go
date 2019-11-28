@@ -51,7 +51,7 @@ type (
 	Request struct {
 		RawRequest *http.Request
 
-		retryOption retryOption
+		retryPolicy retryOption
 	}
 
 	// RequestOption specifies the request options, like params, form, etc.
@@ -88,7 +88,7 @@ func (c *Client) newRequest(method string, url string, opts ...RequestOption) (*
 
 // Get makes a GET HTTP request.
 func Get(url string, opts ...RequestOption) *Response {
-	return std.Get(url, opts...)
+	return gClient.Get(url, opts...)
 }
 
 // Get makes a GET HTTP request.
@@ -98,7 +98,7 @@ func (c *Client) Get(url string, opts ...RequestOption) *Response {
 
 // Head makes a HEAD HTTP request.
 func Head(url string, opts ...RequestOption) *Response {
-	return std.Head(url, opts...)
+	return gClient.Head(url, opts...)
 }
 
 // Head makes a HEAD HTTP request.
@@ -108,7 +108,7 @@ func (c *Client) Head(url string, opts ...RequestOption) *Response {
 
 // Post makes a POST HTTP request.
 func Post(url string, opts ...RequestOption) *Response {
-	return std.Post(url, opts...)
+	return gClient.Post(url, opts...)
 }
 
 // Post makes a POST HTTP request.
@@ -118,17 +118,17 @@ func (c *Client) Post(url string, opts ...RequestOption) *Response {
 
 // Put makes a PUT HTTP request.
 func Put(url string, opts ...RequestOption) *Response {
-	return std.Put(url, opts...)
+	return gClient.Put(url, opts...)
 }
 
 // Put makes a PUT HTTP request.
 func (c *Client) Put(url string, opts ...RequestOption) *Response {
-	return std.Send(MethodPut, url, opts...)
+	return gClient.Send(MethodPut, url, opts...)
 }
 
 // Patch makes a PATCH HTTP request.
 func Patch(url string, opts ...RequestOption) *Response {
-	return std.Patch(url, opts...)
+	return gClient.Patch(url, opts...)
 }
 
 // Patch makes a PATCH HTTP request.
@@ -138,7 +138,7 @@ func (c *Client) Patch(url string, opts ...RequestOption) *Response {
 
 // Delete makes a DELETE HTTP request.
 func Delete(url string, opts ...RequestOption) *Response {
-	return std.Delete(url, opts...)
+	return gClient.Delete(url, opts...)
 }
 
 // Delete makes a DELETE HTTP request.
@@ -148,7 +148,7 @@ func (c *Client) Delete(url string, opts ...RequestOption) *Response {
 
 // Connect makes a CONNECT HTTP request.
 func Connect(url string, opts ...RequestOption) *Response {
-	return std.Connect(url, opts...)
+	return gClient.Connect(url, opts...)
 }
 
 // Connect makes a CONNECT HTTP request.
@@ -158,7 +158,7 @@ func (c *Client) Connect(url string, opts ...RequestOption) *Response {
 
 // Options makes an OPTIONS request.
 func Options(url string, opts ...RequestOption) *Response {
-	return std.Options(url, opts...)
+	return gClient.Options(url, opts...)
 }
 
 // Options makes an OPTIONS request.
@@ -168,7 +168,7 @@ func (c *Client) Options(url string, opts ...RequestOption) *Response {
 
 // Trace makes a TRACE HTTP request.
 func Trace(url string, opts ...RequestOption) *Response {
-	return std.Trace(url, opts...)
+	return gClient.Trace(url, opts...)
 }
 
 // Trace makes a TRACE HTTP request.
@@ -178,7 +178,7 @@ func (c *Client) Trace(url string, opts ...RequestOption) *Response {
 
 // Send makes an HTTP request using a specified method.
 func Send(method string, url string, opts ...RequestOption) *Response {
-	return std.Send(method, url, opts...)
+	return gClient.Send(method, url, opts...)
 }
 
 // Send makes an HTTP request using a specified method.
@@ -190,7 +190,7 @@ func (c *Client) Send(method string, url string, opts ...RequestOption) *Respons
 		return resp
 	}
 
-	if !req.retryOption.enable {
+	if !req.retryPolicy.enable {
 		return c.Do(req.RawRequest)
 	}
 
@@ -199,7 +199,7 @@ func (c *Client) Send(method string, url string, opts ...RequestOption) *Respons
 		ctx = context.Background()
 	}
 
-	for i := req.retryOption.attempts; i > 0; i-- {
+	for i := req.retryPolicy.attempts; i > 0; i-- {
 		resp = c.Do(req.RawRequest)
 		if err = ctx.Err(); err != nil {
 			resp.Err = err
@@ -207,7 +207,7 @@ func (c *Client) Send(method string, url string, opts ...RequestOption) *Respons
 		}
 
 		shouldRetry := resp.Err != nil
-		for _, condition := range req.retryOption.conditions {
+		for _, condition := range req.retryPolicy.conditions {
 			shouldRetry = condition(resp)
 			if shouldRetry {
 				break
@@ -219,7 +219,7 @@ func (c *Client) Send(method string, url string, opts ...RequestOption) *Respons
 		}
 
 		select {
-		case <-time.After(req.retryOption.delay):
+		case <-time.After(req.retryPolicy.delay):
 		case <-ctx.Done():
 			resp.Err = ctx.Err()
 			return resp
@@ -243,6 +243,14 @@ func WithHeaders(headers Headers) RequestOption {
 		for k, v := range headers {
 			req.RawRequest.Header.Set(k, v)
 		}
+		return req, nil
+	}
+}
+
+// WithUserAgent sets User-Agent header value for the HTTP request.
+func WithUserAgent(userAgent string) RequestOption {
+	return func(req *Request) (*Request, error) {
+		req.RawRequest.Header.Set("User-Agent", userAgent)
 		return req, nil
 	}
 }
@@ -420,14 +428,14 @@ func WithContext(ctx context.Context) RequestOption {
 	}
 }
 
-// WithRetry sets retry strategy for the HTTP request.
+// WithRetry sets retry policy for the HTTP request.
 func WithRetry(attempts int, delay time.Duration, conditions ...func(*Response) bool) RequestOption {
 	return func(req *Request) (*Request, error) {
 		if attempts > 1 {
-			req.retryOption.enable = true
-			req.retryOption.attempts = attempts
-			req.retryOption.delay = delay
-			req.retryOption.conditions = conditions
+			req.retryPolicy.enable = true
+			req.retryPolicy.attempts = attempts
+			req.retryPolicy.delay = delay
+			req.retryPolicy.conditions = conditions
 		}
 		return req, nil
 	}

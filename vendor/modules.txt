@@ -27,7 +27,7 @@ github.com/spf13/cobra
 github.com/spf13/pflag
 # github.com/winterssy/easylog v0.0.0-20191102150735-59430c1270ea
 github.com/winterssy/easylog
-# github.com/winterssy/sreq v0.0.0-20191127103117-48ee7bba76ef
+# github.com/winterssy/sreq v0.0.0-20191128151418-b3b0b03d1a30
 github.com/winterssy/sreq
 # golang.org/x/net v0.0.0-20191126235420-ef20fe5d7933
 golang.org/x/net/http/httpguts

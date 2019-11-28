@@ -14,11 +14,12 @@ A simple, user-friendly and concurrent safe HTTP request library for Go, 's' mea
 
 - GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS, etc.
 - Easy set query params, headers and cookies.
-- Easy send form, JSON or files payload.
+- Easy send form, JSON or upload files.
 - Easy set basic authentication or bearer token.
-- Automatic cookies management.
-- Customize HTTP client.
+- Easy set proxy.
 - Easy set context.
+- Session support.
+- Customize HTTP client.
 - Easy decode responses, raw data, text representation and unmarshal the JSON-encoded data.
 - Concurrent safe.
 
@@ -58,6 +59,8 @@ See more examples as follow.
 - [Upload Files](#Upload-Files)
 - [Set Basic Authentication](#Set-Basic-Authentication)
 - [Set Bearer Token](#Set-Bearer-Token)
+- [Set Proxy](#Set-Proxy)
+- [Session Support](#Session-Support)
 - [Customize HTTP Client](#Customize-HTTP-Client)
 - [Concurrent Safe](#Concurrent-Safe)
 
@@ -67,8 +70,8 @@ See more examples as follow.
 data, err := sreq.
     Get("http://httpbin.org/get",
         sreq.WithQuery(sreq.Params{
-            "key1": "value1",
-            "key2": "value2",
+            "k1": "v1",
+            "k2": "v2",
         }),
        ).
     Text()
@@ -102,12 +105,12 @@ data, err := sreq.
     Get("http://httpbin.org/cookies",
         sreq.WithCookies(
             &http.Cookie{
-                Name:  "name1",
-                Value: "value1",
+                Name:  "n1",
+                Value: "v1",
             },
             &http.Cookie{
-                Name:  "name2",
-                Value: "value2",
+                Name:  "n2",
+                Value: "v2",
             },
         ),
        ).
@@ -124,8 +127,8 @@ fmt.Println(data)
 data, err := sreq.
     Post("http://httpbin.org/post",
          sreq.WithForm(sreq.Form{
-             "key1": "value1",
-             "key2": "value2",
+             "k1": "v1",
+             "k2": "v2",
          }),
         ).
     Text()
@@ -197,13 +200,44 @@ if err != nil {
 fmt.Println(data)
 ```
 
+### Set Proxy
+
+```go
+client, _ := sreq.New(nil,
+	sreq.ProxyFromURL("socks5://127.0.0.1:1080"),
+)
+data, err := client.
+    Get("https://api.ipify.org?format=json").
+    Text()
+if err != nil {
+    panic(err)
+}
+fmt.Println(data)
+```
+
+### Session Support
+
+if you want to keep session across the lifecycle of `sreq` , you just need to call `EnableSession` method when you construct a `*sreq.Client`.
+
+```go
+client, _ := sreq.New(nil,
+	sreq.EnableSession(),
+)
+data, err := client.
+    Get("http://httpbin.org/get").
+    Text()
+if err != nil {
+    panic(err)
+}
+fmt.Println(data)
+```
+
 ### Customize HTTP Client
 
-For some reasons, `sreq` does not provide direct APIs for setting transport, redirection policy, cookie jar, timeout, proxy or something else can be set by constructing an `*http.Client`. Construct a custom `sreq` client if you want to do so.
+For advanced use, you can construct a `*sreq.Client` instance via a customized `*http.Client` , `sreq` also provides some useful API to help you do this, please read the API document for more detail.
 
 ```go
 transport := &http.Transport{
-    Proxy: http.ProxyFromEnvironment,
     DialContext: (&net.Dialer{
         Timeout:   30 * time.Second,
         KeepAlive: 30 * time.Second,
@@ -213,25 +247,26 @@ transport := &http.Transport{
     TLSHandshakeTimeout:   10 * time.Second,
     ExpectContinueTimeout: 1 * time.Second,
 }
-redirectPolicy := func(req *http.Request, via []*http.Request) error {
+policy := func(req *http.Request, via []*http.Request) error {
     return http.ErrUseLastResponse
 }
 jar, _ := cookiejar.New(&cookiejar.Options{
     PublicSuffixList: publicsuffix.List,
 })
-timeout := 120 * time.Second
 
-httpClient := &http.Client{
-    Transport:     transport,
-    CheckRedirect: redirectPolicy,
-    Jar:           jar,
-    Timeout:       timeout,
+client, err := sreq.New(transport,
+	sreq.WithRedirectPolicy(policy),
+	sreq.WithCookieJar(jar),
+	sreq.WithTimeout(120*time.Second),
+	sreq.ProxyFromURL("socks5://127.0.0.1:1080"),
+)
+if err != nil {
+    panic(err)
 }
 
-req := sreq.New(httpClient)
-data, err := req.
-    Get("http://httpbin.org/get").
-    Text()
+data, err := client.
+	Get("https://www.google.com").
+	Text()
 if err != nil {
     panic(err)
 }
