@@ -7,16 +7,5 @@ const (
 )
 
 var (
-	gClient *sreq.Client
+	DefaultClient = sreq.DefaultClient
 )
-
-func init() {
-	gClient, _ = sreq.New(nil,
-		sreq.EnableSession(),
-		sreq.WithTimeout(sreq.DefaultTimeout),
-	)
-}
-
-func Client() *sreq.Client {
-	return gClient
-}

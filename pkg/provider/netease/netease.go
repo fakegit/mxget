@@ -31,7 +31,7 @@ const (
 )
 
 var (
-	std = New(request.Client())
+	std = New(nil)
 
 	cookie *http.Cookie
 )
@@ -163,10 +163,7 @@ func init() {
 
 func New(client *sreq.Client) *API {
 	if client == nil {
-		client, _ = sreq.New(nil,
-			sreq.EnableSession(),
-			sreq.WithTimeout(sreq.DefaultTimeout),
-		)
+		client = request.DefaultClient
 	}
 	return &API{
 		Client: client,

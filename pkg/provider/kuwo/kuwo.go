@@ -27,7 +27,7 @@ const (
 )
 
 var (
-	std = New(request.Client())
+	std = New(nil)
 )
 
 type (
@@ -125,10 +125,7 @@ type (
 
 func New(client *sreq.Client) *API {
 	if client == nil {
-		client, _ = sreq.New(nil,
-			sreq.EnableSession(),
-			sreq.WithTimeout(sreq.DefaultTimeout),
-		)
+		client = request.DefaultClient
 	}
 	return &API{
 		Client: client,

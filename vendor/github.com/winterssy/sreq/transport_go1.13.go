@@ -10,7 +10,7 @@ import (
 
 // DefaultTransport returns an HTTP transport that sreq uses by default.
 // It's a clone of http.DefaultTransport indeed.
-func DefaultTransport() *http.Transport {
+func DefaultTransport() http.RoundTripper {
 	return &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		DialContext: (&net.Dialer{

@@ -4,10 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"errors"
-	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 	"mime/multipart"
 	"net/http"
 	stdurl "net/url"
@@ -93,7 +92,7 @@ func (c *Client) newRequest(method string, url string, opts ...RequestOption) (*
 
 // Get makes a GET HTTP request.
 func Get(url string, opts ...RequestOption) *Response {
-	return gClient.Get(url, opts...)
+	return DefaultClient.Get(url, opts...)
 }
 
 // Get makes a GET HTTP request.
@@ -103,7 +102,7 @@ func (c *Client) Get(url string, opts ...RequestOption) *Response {
 
 // Head makes a HEAD HTTP request.
 func Head(url string, opts ...RequestOption) *Response {
-	return gClient.Head(url, opts...)
+	return DefaultClient.Head(url, opts...)
 }
 
 // Head makes a HEAD HTTP request.
@@ -113,7 +112,7 @@ func (c *Client) Head(url string, opts ...RequestOption) *Response {
 
 // Post makes a POST HTTP request.
 func Post(url string, opts ...RequestOption) *Response {
-	return gClient.Post(url, opts...)
+	return DefaultClient.Post(url, opts...)
 }
 
 // Post makes a POST HTTP request.
@@ -123,17 +122,17 @@ func (c *Client) Post(url string, opts ...RequestOption) *Response {
 
 // Put makes a PUT HTTP request.
 func Put(url string, opts ...RequestOption) *Response {
-	return gClient.Put(url, opts...)
+	return DefaultClient.Put(url, opts...)
 }
 
 // Put makes a PUT HTTP request.
 func (c *Client) Put(url string, opts ...RequestOption) *Response {
-	return gClient.Send(MethodPut, url, opts...)
+	return DefaultClient.Send(MethodPut, url, opts...)
 }
 
 // Patch makes a PATCH HTTP request.
 func Patch(url string, opts ...RequestOption) *Response {
-	return gClient.Patch(url, opts...)
+	return DefaultClient.Patch(url, opts...)
 }
 
 // Patch makes a PATCH HTTP request.
@@ -143,7 +142,7 @@ func (c *Client) Patch(url string, opts ...RequestOption) *Response {
 
 // Delete makes a DELETE HTTP request.
 func Delete(url string, opts ...RequestOption) *Response {
-	return gClient.Delete(url, opts...)
+	return DefaultClient.Delete(url, opts...)
 }
 
 // Delete makes a DELETE HTTP request.
@@ -153,7 +152,7 @@ func (c *Client) Delete(url string, opts ...RequestOption) *Response {
 
 // Connect makes a CONNECT HTTP request.
 func Connect(url string, opts ...RequestOption) *Response {
-	return gClient.Connect(url, opts...)
+	return DefaultClient.Connect(url, opts...)
 }
 
 // Connect makes a CONNECT HTTP request.
@@ -163,7 +162,7 @@ func (c *Client) Connect(url string, opts ...RequestOption) *Response {
 
 // Options makes an OPTIONS request.
 func Options(url string, opts ...RequestOption) *Response {
-	return gClient.Options(url, opts...)
+	return DefaultClient.Options(url, opts...)
 }
 
 // Options makes an OPTIONS request.
@@ -173,7 +172,7 @@ func (c *Client) Options(url string, opts ...RequestOption) *Response {
 
 // Trace makes a TRACE HTTP request.
 func Trace(url string, opts ...RequestOption) *Response {
-	return gClient.Trace(url, opts...)
+	return DefaultClient.Trace(url, opts...)
 }
 
 // Trace makes a TRACE HTTP request.
@@ -183,7 +182,7 @@ func (c *Client) Trace(url string, opts ...RequestOption) *Response {
 
 // Send makes an HTTP request using a specified method.
 func Send(method string, url string, opts ...RequestOption) *Response {
-	return gClient.Send(method, url, opts...)
+	return DefaultClient.Send(method, url, opts...)
 }
 
 // Send makes an HTTP request using a specified method.
@@ -200,10 +199,6 @@ func (c *Client) Send(method string, url string, opts ...RequestOption) *Respons
 	}
 
 	ctx := req.RawRequest.Context()
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
 	for i := req.retryPolicy.attempts; i > 0; i-- {
 		resp = c.Do(req.RawRequest)
 		if err = ctx.Err(); err != nil {
@@ -331,9 +326,9 @@ func WithForm(form Form) RequestOption {
 // WithJSON sets json payload for the HTTP request.
 func WithJSON(data JSON, escapeHTML bool) RequestOption {
 	return func(req *Request) (*Request, error) {
-		b, err := Marshal(data, "", "", escapeHTML)
+		b, err := jsonMarshal(data, "", "", escapeHTML)
 		if err != nil {
-			return nil, err
+			return req, err
 		}
 
 		r := bytes.NewReader(b)
@@ -353,12 +348,6 @@ func WithJSON(data JSON, escapeHTML bool) RequestOption {
 // WithFiles sets files payload for the HTTP request.
 func WithFiles(files Files) RequestOption {
 	return func(req *Request) (*Request, error) {
-		for fieldName, filePath := range files {
-			if _, err := ExistsFile(filePath); err != nil {
-				return nil, fmt.Errorf("sreq: file for %q not ready: %v", fieldName, err)
-			}
-		}
-
 		pr, pw := io.Pipe()
 		mw := multipart.NewWriter(pw)
 		go func() {
@@ -369,18 +358,23 @@ func WithFiles(files Files) RequestOption {
 				fileName := filepath.Base(filePath)
 				part, err := mw.CreateFormFile(fieldName, fileName)
 				if err != nil {
+					log.Print(err)
 					continue
 				}
 
 				file, err := os.Open(filePath)
 				if err != nil {
+					log.Print(err)
 					continue
 				}
 
 				_, err = io.Copy(part, file)
-				if err != nil || file.Close() != nil {
+				if err != nil {
+					log.Print(err)
 					continue
 				}
+
+				file.Close()
 			}
 		}()
 
@@ -424,10 +418,6 @@ func WithBearerToken(token string) RequestOption {
 // WithContext sets context for the HTTP request.
 func WithContext(ctx context.Context) RequestOption {
 	return func(req *Request) (*Request, error) {
-		if ctx == nil {
-			return nil, errors.New("sreq: nil Context")
-		}
-
 		req.ctx = ctx
 		return req, nil
 	}

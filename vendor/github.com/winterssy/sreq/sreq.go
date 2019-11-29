@@ -3,9 +3,7 @@ package sreq
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	stdurl "net/url"
-	"os"
 	"sort"
 	"strings"
 )
@@ -142,23 +140,6 @@ func (f Files) String() string {
 	return toJSON(f)
 }
 
-// ExistsFile checks whether a file exists or not.
-func ExistsFile(filename string) (bool, error) {
-	fi, err := os.Stat(filename)
-	if err == nil {
-		if fi.Mode().IsDir() {
-			return false, fmt.Errorf("%q is a directory", filename)
-		}
-		return true, nil
-	}
-
-	if os.IsNotExist(err) {
-		return false, err
-	}
-
-	return true, err
-}
-
 func urlEncode(v map[string]string, escape bool) string {
 	keys := make([]string, 0, len(v))
 	for k := range v {
@@ -191,15 +172,14 @@ func urlEncode(v map[string]string, escape bool) string {
 }
 
 func toJSON(data interface{}) string {
-	b, err := Marshal(data, "", "\t", false)
+	b, err := jsonMarshal(data, "", "\t", false)
 	if err != nil {
 		return "{}"
 	}
 	return string(b)
 }
 
-// Marshal returns the JSON encoding of v.
-func Marshal(v interface{}, prefix string, indent string, escapeHTML bool) ([]byte, error) {
+func jsonMarshal(v interface{}, prefix string, indent string, escapeHTML bool) ([]byte, error) {
 	buf := &bytes.Buffer{}
 	encoder := json.NewEncoder(buf)
 	encoder.SetIndent(prefix, indent)

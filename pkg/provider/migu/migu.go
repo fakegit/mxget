@@ -32,7 +32,7 @@ const (
 )
 
 var (
-	std = New(request.Client())
+	std = New(nil)
 
 	codeRate = map[int]string{
 		64:  "LQ",
@@ -186,10 +186,7 @@ type (
 
 func New(client *sreq.Client) *API {
 	if client == nil {
-		client, _ = sreq.New(nil,
-			sreq.EnableSession(),
-			sreq.WithTimeout(sreq.DefaultTimeout),
-		)
+		client = request.DefaultClient
 	}
 	return &API{
 		Client: client,

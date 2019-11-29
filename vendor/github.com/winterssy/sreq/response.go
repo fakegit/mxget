@@ -15,8 +15,6 @@ type (
 	Response struct {
 		RawResponse *http.Response
 		Err         error
-
-		body []byte
 	}
 )
 
@@ -25,34 +23,24 @@ func (r *Response) Resolve() (*http.Response, error) {
 	return r.RawResponse, r.Err
 }
 
-// Raw decodes the HTTP response body of r and returns its raw data.
+// Raw decodes the HTTP response body and returns its raw data.
 func (r *Response) Raw() ([]byte, error) {
-	if r.body != nil {
-		return r.body, nil
-	}
-
 	if r.Err != nil {
 		return nil, r.Err
 	}
 	defer r.RawResponse.Body.Close()
 
-	var err error
-	r.body, err = ioutil.ReadAll(r.RawResponse.Body)
-	return r.body, err
+	return ioutil.ReadAll(r.RawResponse.Body)
 }
 
-// Text decodes the HTTP response body of r and returns the text representation of its raw data.
+// Text decodes the HTTP response body and returns the text representation of its raw data.
 func (r *Response) Text() (string, error) {
 	b, err := r.Raw()
 	return string(b), err
 }
 
-// JSON decodes the HTTP response body of r and unmarshals its JSON-encoded data into v.
+// JSON decodes the HTTP response body and unmarshals its JSON-encoded data into v.
 func (r *Response) JSON(v interface{}) error {
-	if r.body != nil {
-		return json.Unmarshal(r.body, v)
-	}
-
 	if r.Err != nil {
 		return r.Err
 	}
@@ -75,7 +63,7 @@ func (r *Response) Cookies() ([]*http.Cookie, error) {
 	return cookies, nil
 }
 
-// Cookie returns the HTTP response cookie by name.
+// Cookie returns the HTTP response named cookie.
 func (r *Response) Cookie(name string) (*http.Cookie, error) {
 	cookies, err := r.Cookies()
 	if err != nil {
@@ -91,12 +79,12 @@ func (r *Response) Cookie(name string) (*http.Cookie, error) {
 	return nil, errors.New("sreq: named cookie not present")
 }
 
-// EnsureStatusOk ensures the HTTP response's status code of r must be 200.
+// EnsureStatusOk ensures the HTTP response's status code must be 200.
 func (r *Response) EnsureStatusOk() *Response {
 	return r.EnsureStatus(http.StatusOK)
 }
 
-// EnsureStatus2xx ensures the HTTP response's status code of r must be 2xx.
+// EnsureStatus2xx ensures the HTTP response's status code must be 2xx.
 func (r *Response) EnsureStatus2xx() *Response {
 	if r.Err != nil {
 		return r
@@ -107,7 +95,7 @@ func (r *Response) EnsureStatus2xx() *Response {
 	return r
 }
 
-// EnsureStatus ensures the HTTP response's status code of r must be the code parameter.
+// EnsureStatus ensures the HTTP response's status code must be the code parameter.
 func (r *Response) EnsureStatus(code int) *Response {
 	if r.Err != nil {
 		return r
@@ -120,10 +108,6 @@ func (r *Response) EnsureStatus(code int) *Response {
 
 // Save saves the HTTP response into a file.
 func (r *Response) Save(filename string, perm os.FileMode) error {
-	if r.body != nil {
-		return ioutil.WriteFile(filename, r.body, perm)
-	}
-
 	if r.Err != nil {
 		return r.Err
 	}
@@ -148,7 +132,7 @@ func (r *Response) Verbose(w io.Writer) error {
 
 	req := r.RawResponse.Request
 	fmt.Fprintf(w, "> %s %s %s\r\n", req.Method, req.URL.RequestURI(), req.Proto)
-	fmt.Fprintf(w, "> Host: %s\r\n", req.Host)
+	fmt.Fprintf(w, "> Host: %s\r\n", req.URL.Host)
 	for k := range req.Header {
 		fmt.Fprintf(w, "> %s: %s\r\n", k, req.Header.Get(k))
 	}
@@ -175,11 +159,6 @@ func (r *Response) Verbose(w io.Writer) error {
 		fmt.Fprintf(w, "< %s: %s\r\n", k, resp.Header.Get(k))
 	}
 	fmt.Fprint(w, "<\r\n")
-
-	if r.body != nil {
-		fmt.Fprint(w, string(r.body))
-		return nil
-	}
 
 	defer resp.Body.Close()
 	_, err := io.Copy(w, resp.Body)
