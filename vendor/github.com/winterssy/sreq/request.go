@@ -52,6 +52,7 @@ type (
 		RawRequest *http.Request
 
 		retryPolicy retryOption
+		ctx         context.Context
 	}
 
 	// RequestOption specifies the request options, like params, form, etc.
@@ -81,6 +82,10 @@ func (c *Client) newRequest(method string, url string, opts ...RequestOption) (*
 		if err != nil {
 			return nil, err
 		}
+	}
+
+	if req.ctx != nil {
+		req.RawRequest = req.RawRequest.WithContext(req.ctx)
 	}
 
 	return req, nil
@@ -423,7 +428,7 @@ func WithContext(ctx context.Context) RequestOption {
 			return nil, errors.New("sreq: nil Context")
 		}
 
-		req.RawRequest = req.RawRequest.WithContext(ctx)
+		req.ctx = ctx
 		return req, nil
 	}
 }

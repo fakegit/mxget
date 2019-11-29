@@ -54,11 +54,13 @@ func New(transport http.RoundTripper, opts ...ClientOption) (*Client, error) {
 		transport = DefaultTransport()
 	}
 
-	client := &Client{
-		RawClient: &http.Client{
-			Transport: transport,
-		},
+	rawClient := &http.Client{
+		Transport: transport,
 	}
+	client := &Client{
+		RawClient: rawClient,
+	}
+
 	var err error
 	for _, opt := range opts {
 		client, err = opt(client)
@@ -78,7 +80,7 @@ func FilterCookies(url string) ([]*http.Cookie, error) {
 // FilterCookies returns the cookies to send in a request for the given URL.
 func (c *Client) FilterCookies(url string) ([]*http.Cookie, error) {
 	if c.RawClient.Jar == nil {
-		return nil, errors.New("sreq: nil cookie gJar")
+		return nil, errors.New("sreq: nil cookie jar")
 	}
 
 	u, err := stdurl.Parse(url)
@@ -128,15 +130,7 @@ func (c *Client) Do(rawRequest *http.Request) *Response {
 	}
 }
 
-// WithTimeout sets timeout of the HTTP client.
-func WithTimeout(timeout time.Duration) ClientOption {
-	return func(c *Client) (*Client, error) {
-		c.RawClient.Timeout = timeout
-		return c, nil
-	}
-}
-
-// WithRedirectPolicy sets redirection policy of the HTTP client.
+// WithRedirectPolicy sets policy of the HTTP client for handling redirects.
 func WithRedirectPolicy(policy func(req *http.Request, via []*http.Request) error) ClientOption {
 	return func(c *Client) (*Client, error) {
 		c.RawClient.CheckRedirect = policy
@@ -148,6 +142,14 @@ func WithRedirectPolicy(policy func(req *http.Request, via []*http.Request) erro
 func WithCookieJar(jar http.CookieJar) ClientOption {
 	return func(c *Client) (*Client, error) {
 		c.RawClient.Jar = jar
+		return c, nil
+	}
+}
+
+// WithTimeout sets timeout of the HTTP client.
+func WithTimeout(timeout time.Duration) ClientOption {
+	return func(c *Client) (*Client, error) {
+		c.RawClient.Timeout = timeout
 		return c, nil
 	}
 }
@@ -166,52 +168,40 @@ func DisableRedirect() ClientOption {
 	return WithRedirectPolicy(policy)
 }
 
-// ProxyFromEnvironment sets proxy of the HTTP client from the environment variables.
-// This is the default behavior of sreq if you do not specify the transport manually.
-func ProxyFromEnvironment() ClientOption {
+// WithProxy sets proxy of the HTTP client.
+func WithProxy(proxy func(*http.Request) (*stdurl.URL, error)) ClientOption {
 	return func(c *Client) (*Client, error) {
 		transport, ok := c.RawClient.Transport.(*http.Transport)
 		if !ok {
 			return nil, ErrUnexpectedTransport
 		}
 
-		transport.Proxy = http.ProxyFromEnvironment
+		transport.Proxy = proxy
 		c.RawClient.Transport = transport
 		return c, nil
 	}
+}
+
+// ProxyFromEnvironment sets proxy of the HTTP client from the environment variables.
+// This is the default behavior of sreq if you do not specify the transport manually.
+func ProxyFromEnvironment() ClientOption {
+	return WithProxy(http.ProxyFromEnvironment)
 }
 
 // ProxyFromURL sets proxy of the HTTP client from a url.
 func ProxyFromURL(url string) ClientOption {
-	return func(c *Client) (*Client, error) {
-		proxyURL, err := stdurl.Parse(url)
-		if err != nil {
+	fixedURL, err := stdurl.Parse(url)
+	if err != nil {
+		return func(c *Client) (*Client, error) {
 			return nil, err
 		}
-
-		transport, ok := c.RawClient.Transport.(*http.Transport)
-		if !ok {
-			return nil, ErrUnexpectedTransport
-		}
-
-		transport.Proxy = http.ProxyURL(proxyURL)
-		c.RawClient.Transport = transport
-		return c, nil
 	}
+	return WithProxy(http.ProxyURL(fixedURL))
 }
 
 // DisableProxy makes the HTTP client not use proxy.
 func DisableProxy() ClientOption {
-	return func(c *Client) (*Client, error) {
-		transport, ok := c.RawClient.Transport.(*http.Transport)
-		if !ok {
-			return nil, ErrUnexpectedTransport
-		}
-
-		transport.Proxy = nil
-		c.RawClient.Transport = transport
-		return c, nil
-	}
+	return WithProxy(nil)
 }
 
 // WithTLSClientConfig sets TLS configuration of the HTTP client.
@@ -249,7 +239,7 @@ func WithClientCertificates(certs ...tls.Certificate) ClientOption {
 // WithRootCA appends root certificate authorities to the HTTP client.
 func WithRootCA(pemFilePath string) ClientOption {
 	return func(c *Client) (*Client, error) {
-		pemCert, err := ioutil.ReadFile(pemFilePath)
+		pemCerts, err := ioutil.ReadFile(pemFilePath)
 		if err != nil {
 			return nil, err
 		}
@@ -266,7 +256,7 @@ func WithRootCA(pemFilePath string) ClientOption {
 			transport.TLSClientConfig.RootCAs = x509.NewCertPool()
 		}
 
-		transport.TLSClientConfig.RootCAs.AppendCertsFromPEM(pemCert)
+		transport.TLSClientConfig.RootCAs.AppendCertsFromPEM(pemCerts)
 		c.RawClient.Transport = transport
 		return c, nil
 	}

@@ -287,7 +287,7 @@ for i := 0; i < MaxWorker; i++ {
         defer wg.Done()
 
         params := sreq.Params{}
-        params.Set(fmt.Sprintf("key%d", i), fmt.Sprintf("value%d", i))
+        params.Set(fmt.Sprintf("k%d", i), fmt.Sprintf("v%d", i))
 
         data, err := sreq.
             Get("http://httpbin.org/get",
