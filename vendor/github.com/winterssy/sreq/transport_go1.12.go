@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// DefaultTransport returns an HTTP transport that sreq uses by default.
+// DefaultTransport returns an HTTP transport used by DefaultClient.
 // It's a clone of http.DefaultTransport indeed.
 func DefaultTransport() http.RoundTripper {
 	return &http.Transport{

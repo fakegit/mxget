@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"errors"
 	"io"
 	"io/ioutil"
 	"log"
@@ -358,19 +359,19 @@ func WithFiles(files Files) RequestOption {
 				fileName := filepath.Base(filePath)
 				part, err := mw.CreateFormFile(fieldName, fileName)
 				if err != nil {
-					log.Print(err)
+					log.Printf("sreq: can't upload %s: %s", fieldName, err.Error())
 					continue
 				}
 
 				file, err := os.Open(filePath)
 				if err != nil {
-					log.Print(err)
+					log.Printf("sreq: can't upload %s: %s", fieldName, err.Error())
 					continue
 				}
 
 				_, err = io.Copy(part, file)
 				if err != nil {
-					log.Print(err)
+					log.Printf("sreq: can't upload %s: %s", fieldName, err.Error())
 					continue
 				}
 
@@ -418,6 +419,10 @@ func WithBearerToken(token string) RequestOption {
 // WithContext sets context for the HTTP request.
 func WithContext(ctx context.Context) RequestOption {
 	return func(req *Request) (*Request, error) {
+		if ctx == nil {
+			return req, errors.New("sreq: nil Context")
+		}
+
 		req.ctx = ctx
 		return req, nil
 	}

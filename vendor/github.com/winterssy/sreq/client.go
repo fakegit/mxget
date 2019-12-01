@@ -26,8 +26,7 @@ var (
 	// DefaultCookieJar is the cookie jar used by DefaultClient.
 	DefaultCookieJar http.CookieJar
 
-	// ErrUnexpectedTransport can be returned if assert a RoundTripper as an *http.Transport failed.
-	ErrUnexpectedTransport = errors.New("sreq: current transport is not an *http.Transport instance")
+	errUnexpectedTransport = errors.New("current transport isn't a non-nil *http.Transport instance")
 )
 
 type (
@@ -45,6 +44,7 @@ func init() {
 }
 
 // New returns a new sreq client.
+// It's a clone of DefaultClient indeed.
 func New() *Client {
 	rawClient := &http.Client{}
 	client := &Client{
@@ -57,16 +57,18 @@ func New() *Client {
 	return client
 }
 
-func (c *Client) transport() (*http.Transport, error) {
+func (c *Client) httpTransport() (*http.Transport, error) {
 	t, ok := c.RawClient.Transport.(*http.Transport)
-	if !ok {
-		return nil, ErrUnexpectedTransport
-	}
-	if t == nil {
-		return t, errors.New("sreq: nil transport")
+	if !ok || t == nil {
+		return nil, errUnexpectedTransport
 	}
 
 	return t, nil
+}
+
+// SetTransport sets transport of the HTTP client.
+func SetTransport(transport http.RoundTripper) *Client {
+	return DefaultClient.SetTransport(transport)
 }
 
 // SetTransport sets transport of the HTTP client.
@@ -76,21 +78,19 @@ func (c *Client) SetTransport(transport http.RoundTripper) *Client {
 }
 
 // SetRedirectPolicy sets policy of the HTTP client for handling redirects.
+func SetRedirectPolicy(policy func(req *http.Request, via []*http.Request) error) *Client {
+	return DefaultClient.SetRedirectPolicy(policy)
+}
+
+// SetRedirectPolicy sets policy of the HTTP client for handling redirects.
 func (c *Client) SetRedirectPolicy(policy func(req *http.Request, via []*http.Request) error) *Client {
 	c.RawClient.CheckRedirect = policy
 	return c
 }
 
-// SetCookieJar sets cookie jar of the HTTP client.
-func (c *Client) SetCookieJar(jar http.CookieJar) *Client {
-	c.RawClient.Jar = jar
-	return c
-}
-
-// SetTimeout sets timeout of the HTTP client.
-func (c *Client) SetTimeout(timeout time.Duration) *Client {
-	c.RawClient.Timeout = timeout
-	return c
+// DisableRedirect makes the HTTP client not follow redirects.
+func DisableRedirect() *Client {
+	return DefaultClient.DisableRedirect()
 }
 
 // DisableRedirect makes the HTTP client not follow redirects.
@@ -101,11 +101,50 @@ func (c *Client) DisableRedirect() *Client {
 	return c.SetRedirectPolicy(policy)
 }
 
+// SetCookieJar sets cookie jar of the HTTP client.
+func SetCookieJar(jar http.CookieJar) *Client {
+	return DefaultClient.SetCookieJar(jar)
+}
+
+// SetCookieJar sets cookie jar of the HTTP client.
+func (c *Client) SetCookieJar(jar http.CookieJar) *Client {
+	c.RawClient.Jar = jar
+	return c
+}
+
+// DisableSession makes the HTTP client not use cookie jar.
+// Only use if you don't want to keep session for the next HTTP request.
+func DisableSession() *Client {
+	return DefaultClient.DisableSession()
+}
+
+// DisableSession makes the HTTP client not use cookie jar.
+// Only use if you don't want to keep session for the next HTTP request.
+func (c *Client) DisableSession() *Client {
+	return c.SetCookieJar(nil)
+}
+
+// SetTimeout sets timeout of the HTTP client.
+func SetTimeout(timeout time.Duration) *Client {
+	return DefaultClient.SetTimeout(timeout)
+}
+
+// SetTimeout sets timeout of the HTTP client.
+func (c *Client) SetTimeout(timeout time.Duration) *Client {
+	c.RawClient.Timeout = timeout
+	return c
+}
+
+// SetProxy sets proxy of the HTTP client.
+func SetProxy(proxy func(*http.Request) (*stdurl.URL, error)) *Client {
+	return DefaultClient.SetProxy(proxy)
+}
+
 // SetProxy sets proxy of the HTTP client.
 func (c *Client) SetProxy(proxy func(*http.Request) (*stdurl.URL, error)) *Client {
-	t, err := c.transport()
+	t, err := c.httpTransport()
 	if err != nil {
-		log.Print(err)
+		log.Printf("sreq: can't set proxy: %s", err.Error())
 		return c
 	}
 
@@ -115,13 +154,23 @@ func (c *Client) SetProxy(proxy func(*http.Request) (*stdurl.URL, error)) *Clien
 }
 
 // ProxyFromURL sets proxy of the HTTP client from a url.
+func ProxyFromURL(url string) *Client {
+	return DefaultClient.ProxyFromURL(url)
+}
+
+// ProxyFromURL sets proxy of the HTTP client from a url.
 func (c *Client) ProxyFromURL(url string) *Client {
 	fixedURL, err := stdurl.Parse(url)
 	if err != nil {
-		log.Print(err)
+		log.Printf("sreq: can't set proxy: %s", err.Error())
 		return c
 	}
 	return c.SetProxy(http.ProxyURL(fixedURL))
+}
+
+// DisableProxy makes the HTTP client not use proxy.
+func DisableProxy() *Client {
+	return DefaultClient.DisableProxy()
 }
 
 // DisableProxy makes the HTTP client not use proxy.
@@ -130,10 +179,15 @@ func (c *Client) DisableProxy() *Client {
 }
 
 // SetTLSClientConfig sets TLS configuration of the HTTP client.
+func SetTLSClientConfig(config *tls.Config) *Client {
+	return DefaultClient.SetTLSClientConfig(config)
+}
+
+// SetTLSClientConfig sets TLS configuration of the HTTP client.
 func (c *Client) SetTLSClientConfig(config *tls.Config) *Client {
-	t, err := c.transport()
+	t, err := c.httpTransport()
 	if err != nil {
-		log.Print(err)
+		log.Printf("sreq: can't set TLS configuration: %s", err.Error())
 		return c
 	}
 
@@ -143,10 +197,15 @@ func (c *Client) SetTLSClientConfig(config *tls.Config) *Client {
 }
 
 // AppendClientCertificates appends client certificates to the HTTP client.
+func AppendClientCertificates(certs ...tls.Certificate) *Client {
+	return DefaultClient.AppendClientCertificates(certs...)
+}
+
+// AppendClientCertificates appends client certificates to the HTTP client.
 func (c *Client) AppendClientCertificates(certs ...tls.Certificate) *Client {
-	t, err := c.transport()
+	t, err := c.httpTransport()
 	if err != nil {
-		log.Print(err)
+		log.Printf("sreq: can't append client certificates: %s", err.Error())
 		return c
 	}
 
@@ -160,10 +219,15 @@ func (c *Client) AppendClientCertificates(certs ...tls.Certificate) *Client {
 }
 
 // AppendRootCAs appends root certificate authorities to the HTTP client.
+func AppendRootCAs(pemFilePath string) *Client {
+	return DefaultClient.AppendRootCAs(pemFilePath)
+}
+
+// AppendRootCAs appends root certificate authorities to the HTTP client.
 func (c *Client) AppendRootCAs(pemFilePath string) *Client {
-	t, err := c.transport()
+	t, err := c.httpTransport()
 	if err != nil {
-		log.Print(err)
+		log.Printf("sreq: can't append root certificate authorities: %s", err.Error())
 		return c
 	}
 
@@ -176,7 +240,7 @@ func (c *Client) AppendRootCAs(pemFilePath string) *Client {
 
 	pemCerts, err := ioutil.ReadFile(pemFilePath)
 	if err != nil {
-		log.Print(err)
+		log.Printf("sreq: can't append root certificate authorities: %s", err.Error())
 		return c
 	}
 
@@ -186,10 +250,15 @@ func (c *Client) AppendRootCAs(pemFilePath string) *Client {
 }
 
 // DisableVerify makes the HTTP client not verify the server's TLS certificate.
+func DisableVerify() *Client {
+	return DefaultClient.DisableVerify()
+}
+
+// DisableVerify makes the HTTP client not verify the server's TLS certificate.
 func (c *Client) DisableVerify() *Client {
-	t, err := c.transport()
+	t, err := c.httpTransport()
 	if err != nil {
-		log.Print(err)
+		log.Printf("sreq: can't disable proxy: %s", err.Error())
 		return c
 	}
 

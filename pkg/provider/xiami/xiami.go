@@ -29,7 +29,7 @@ const (
 )
 
 var (
-	std = New(nil)
+	std = New(request.DefaultClient)
 )
 
 type (
@@ -201,7 +201,7 @@ type (
 
 func New(client *sreq.Client) *API {
 	if client == nil {
-		client = request.DefaultClient
+		client = sreq.New()
 	}
 	return &API{
 		Client: client,
