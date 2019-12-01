@@ -28,6 +28,12 @@ const (
 
 var (
 	std = New(request.DefaultClient)
+
+	defaultHeaders = sreq.Headers{
+		"Origin":     "http://www.kuwo.cn",
+		"Referer":    "http://www.kuwo.cn",
+		"User-Agent": request.UserAgent,
+	}
 )
 
 type (
@@ -188,16 +194,11 @@ func (a *API) Request(method string, url string, opts ...sreq.RequestOption) *sr
 		csrf = cookie.Value
 	}
 
-	defaultOpts := []sreq.RequestOption{
-		sreq.WithHeaders(sreq.Headers{
-			"csrf":       csrf,
-			"Origin":     "http://www.kuwo.cn",
-			"Referer":    "http://www.kuwo.cn",
-			"User-Agent": request.UserAgent,
-		}),
-	}
-
-	opts = append(opts, defaultOpts...)
+	headers := defaultHeaders.Clone()
+	headers.Set("csrf", csrf)
+	opts = append(opts,
+		sreq.WithHeaders(headers),
+	)
 	return a.Client.Send(method, url, opts...)
 }
 

@@ -33,6 +33,12 @@ const (
 
 var (
 	std = New(request.DefaultClient)
+
+	defaultHeaders = sreq.Headers{
+		"Origin":     "https://c.y.qq.com",
+		"Referer":    "https://c.y.qq.com",
+		"User-Agent": request.UserAgent,
+	}
 )
 
 type (
@@ -200,14 +206,9 @@ func (p *PlaylistResponse) String() string {
 }
 
 func (a *API) Request(method string, url string, opts ...sreq.RequestOption) *sreq.Response {
-	defaultOpts := []sreq.RequestOption{
-		sreq.WithHeaders(sreq.Headers{
-			"Origin":     "https://c.y.qq.com",
-			"Referer":    "https://c.y.qq.com",
-			"User-Agent": request.UserAgent,
-		}),
-	}
-	opts = append(opts, defaultOpts...)
+	opts = append(opts,
+		sreq.WithHeaders(defaultHeaders),
+	)
 	return a.Client.Send(method, url, opts...)
 }
 

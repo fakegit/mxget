@@ -34,6 +34,12 @@ var (
 	std = New(request.DefaultClient)
 
 	cookie *http.Cookie
+
+	defaultHeaders = sreq.Headers{
+		"Origin":     "https://music.163.com",
+		"Referer":    "https://music.163.com",
+		"User-Agent": request.UserAgent,
+	}
 )
 
 type (
@@ -214,15 +220,10 @@ func (e *LoginResponse) String() string {
 }
 
 func (a *API) Request(method string, url string, opts ...sreq.RequestOption) *sreq.Response {
-	defaultOpts := []sreq.RequestOption{
-		sreq.WithHeaders(sreq.Headers{
-			"Origin":     "https://music.163.com",
-			"Referer":    "https://music.163.com",
-			"User-Agent": request.UserAgent,
-		}),
-	}
+	opts = append(opts,
+		sreq.WithHeaders(defaultHeaders),
+	)
 
-	opts = append(opts, defaultOpts...)
 	// 如果已经登录，不需要额外设置cookie，cookie jar会自动管理
 	_, err := a.Client.FilterCookie(url, "MUSIC_U")
 	if err != nil {

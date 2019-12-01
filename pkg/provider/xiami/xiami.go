@@ -30,6 +30,12 @@ const (
 
 var (
 	std = New(request.DefaultClient)
+
+	defaultHeaders = sreq.Headers{
+		"Origin":     "https://h.xiami.com",
+		"Referer":    "https://h.xiami.com",
+		"User-Agent": request.UserAgent,
+	}
 )
 
 type (
@@ -258,14 +264,9 @@ func (p *LoginResponse) String() string {
 }
 
 func (a *API) Request(method string, url string, opts ...sreq.RequestOption) *sreq.Response {
-	defaultOpts := []sreq.RequestOption{
-		sreq.WithHeaders(sreq.Headers{
-			"Origin":     "https://h.xiami.com",
-			"Referer":    "https://h.xiami.com",
-			"User-Agent": request.UserAgent,
-		}),
-	}
-	opts = append(opts, defaultOpts...)
+	opts = append(opts,
+		sreq.WithHeaders(defaultHeaders),
+	)
 	return a.Client.Send(method, url, opts...)
 }
 

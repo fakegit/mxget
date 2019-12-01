@@ -40,6 +40,13 @@ var (
 		320: "HQ",
 		999: "SQ",
 	}
+
+	defaultHeaders = sreq.Headers{
+		"channel":    "0",
+		"Origin":     "http://music.migu.cn/v3",
+		"Referer":    "http://music.migu.cn/v3",
+		"User-Agent": request.UserAgent,
+	}
 )
 
 type (
@@ -245,15 +252,9 @@ func (p *PlaylistResponse) String() string {
 }
 
 func (a *API) Request(method string, url string, opts ...sreq.RequestOption) *sreq.Response {
-	defaultOpts := []sreq.RequestOption{
-		sreq.WithHeaders(sreq.Headers{
-			"channel":    "0",
-			"Origin":     "http://music.migu.cn/v3",
-			"Referer":    "http://music.migu.cn/v3",
-			"User-Agent": request.UserAgent,
-		}),
-	}
-	opts = append(opts, defaultOpts...)
+	opts = append(opts,
+		sreq.WithHeaders(defaultHeaders),
+	)
 	return a.Client.Send(method, url, opts...)
 }
 

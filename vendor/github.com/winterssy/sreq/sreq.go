@@ -70,6 +70,19 @@ func (h Headers) Del(key string) {
 	delete(h, key)
 }
 
+// Clone returns a copy of h or nil if h is nil.
+func (h Headers) Clone() Headers {
+	if h == nil {
+		return nil
+	}
+
+	h2 := make(Headers, len(h))
+	for k, v := range h {
+		h2[k] = v
+	}
+	return h2
+}
+
 // String returns the JSON-encoded text representation of h.
 func (h Headers) String() string {
 	return toJSON(h)
