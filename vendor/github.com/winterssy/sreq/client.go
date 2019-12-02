@@ -4,8 +4,8 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
+	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"net/http/cookiejar"
 	stdurl "net/url"
@@ -33,6 +33,7 @@ type (
 	// Client wraps the raw HTTP client.
 	Client struct {
 		RawClient *http.Client
+		Err       error
 	}
 )
 
@@ -43,7 +44,7 @@ func init() {
 	DefaultClient = New()
 }
 
-// New returns a new sreq client.
+// New returns a new Client.
 // It's a clone of DefaultClient indeed.
 func New() *Client {
 	rawClient := &http.Client{}
@@ -64,6 +65,19 @@ func (c *Client) httpTransport() (*http.Transport, error) {
 	}
 
 	return t, nil
+}
+
+func (c *Client) raiseError(cause string, err error) {
+	if c.Err != nil {
+		return
+	}
+
+	c.Err = fmt.Errorf("sreq [%s]: %s", cause, err.Error())
+}
+
+// Resolve resolves c and returns its raw HTTP client.
+func (c *Client) Resolve() (*http.Client, error) {
+	return c.RawClient, c.Err
 }
 
 // SetTransport sets transport of the HTTP client.
@@ -144,7 +158,7 @@ func SetProxy(proxy func(*http.Request) (*stdurl.URL, error)) *Client {
 func (c *Client) SetProxy(proxy func(*http.Request) (*stdurl.URL, error)) *Client {
 	t, err := c.httpTransport()
 	if err != nil {
-		log.Printf("sreq: can't set proxy: %s", err.Error())
+		c.raiseError("Client.SetProxy", err)
 		return c
 	}
 
@@ -153,16 +167,16 @@ func (c *Client) SetProxy(proxy func(*http.Request) (*stdurl.URL, error)) *Clien
 	return c
 }
 
-// ProxyFromURL sets proxy of the HTTP client from a url.
-func ProxyFromURL(url string) *Client {
-	return DefaultClient.ProxyFromURL(url)
+// SetProxyFromURL sets proxy of the HTTP client from a url.
+func SetProxyFromURL(url string) *Client {
+	return DefaultClient.SetProxyFromURL(url)
 }
 
-// ProxyFromURL sets proxy of the HTTP client from a url.
-func (c *Client) ProxyFromURL(url string) *Client {
+// SetProxyFromURL sets proxy of the HTTP client from a url.
+func (c *Client) SetProxyFromURL(url string) *Client {
 	fixedURL, err := stdurl.Parse(url)
 	if err != nil {
-		log.Printf("sreq: can't set proxy: %s", err.Error())
+		c.raiseError("Client.SetProxyFromURL", err)
 		return c
 	}
 	return c.SetProxy(http.ProxyURL(fixedURL))
@@ -187,7 +201,7 @@ func SetTLSClientConfig(config *tls.Config) *Client {
 func (c *Client) SetTLSClientConfig(config *tls.Config) *Client {
 	t, err := c.httpTransport()
 	if err != nil {
-		log.Printf("sreq: can't set TLS configuration: %s", err.Error())
+		c.raiseError("Client.SetTLSClientConfig", err)
 		return c
 	}
 
@@ -205,7 +219,7 @@ func AppendClientCertificates(certs ...tls.Certificate) *Client {
 func (c *Client) AppendClientCertificates(certs ...tls.Certificate) *Client {
 	t, err := c.httpTransport()
 	if err != nil {
-		log.Printf("sreq: can't append client certificates: %s", err.Error())
+		c.raiseError("Client.AppendClientCertificates", err)
 		return c
 	}
 
@@ -227,7 +241,7 @@ func AppendRootCAs(pemFilePath string) *Client {
 func (c *Client) AppendRootCAs(pemFilePath string) *Client {
 	t, err := c.httpTransport()
 	if err != nil {
-		log.Printf("sreq: can't append root certificate authorities: %s", err.Error())
+		c.raiseError("Client.AppendRootCAs", err)
 		return c
 	}
 
@@ -240,7 +254,7 @@ func (c *Client) AppendRootCAs(pemFilePath string) *Client {
 
 	pemCerts, err := ioutil.ReadFile(pemFilePath)
 	if err != nil {
-		log.Printf("sreq: can't append root certificate authorities: %s", err.Error())
+		c.raiseError("Client.AppendRootCAs", err)
 		return c
 	}
 
@@ -258,7 +272,7 @@ func DisableVerify() *Client {
 func (c *Client) DisableVerify() *Client {
 	t, err := c.httpTransport()
 	if err != nil {
-		log.Printf("sreq: can't disable proxy: %s", err.Error())
+		c.raiseError("Client.DisableVerify", err)
 		return c
 	}
 
@@ -269,6 +283,80 @@ func (c *Client) DisableVerify() *Client {
 	t.TLSClientConfig.InsecureSkipVerify = true
 	c.RawClient.Transport = t
 	return c
+}
+
+// Get makes a GET HTTP request.
+func Get(url string, opts ...RequestOption) *Response {
+	return DefaultClient.Get(url, opts...)
+}
+
+// Get makes a GET HTTP request.
+func (c *Client) Get(url string, opts ...RequestOption) *Response {
+	return c.Send(MethodGet, url, opts...)
+}
+
+// Head makes a HEAD HTTP request.
+func Head(url string, opts ...RequestOption) *Response {
+	return DefaultClient.Head(url, opts...)
+}
+
+// Head makes a HEAD HTTP request.
+func (c *Client) Head(url string, opts ...RequestOption) *Response {
+	return c.Send(MethodHead, url, opts...)
+}
+
+// Post makes a POST HTTP request.
+func Post(url string, opts ...RequestOption) *Response {
+	return DefaultClient.Post(url, opts...)
+}
+
+// Post makes a POST HTTP request.
+func (c *Client) Post(url string, opts ...RequestOption) *Response {
+	return c.Send(MethodPost, url, opts...)
+}
+
+// Put makes a PUT HTTP request.
+func Put(url string, opts ...RequestOption) *Response {
+	return DefaultClient.Put(url, opts...)
+}
+
+// Put makes a PUT HTTP request.
+func (c *Client) Put(url string, opts ...RequestOption) *Response {
+	return DefaultClient.Send(MethodPut, url, opts...)
+}
+
+// Patch makes a PATCH HTTP request.
+func Patch(url string, opts ...RequestOption) *Response {
+	return DefaultClient.Patch(url, opts...)
+}
+
+// Patch makes a PATCH HTTP request.
+func (c *Client) Patch(url string, opts ...RequestOption) *Response {
+	return c.Send(MethodPatch, url, opts...)
+}
+
+// Delete makes a DELETE HTTP request.
+func Delete(url string, opts ...RequestOption) *Response {
+	return DefaultClient.Delete(url, opts...)
+}
+
+// Delete makes a DELETE HTTP request.
+func (c *Client) Delete(url string, opts ...RequestOption) *Response {
+	return c.Send(MethodDelete, url, opts...)
+}
+
+// Send makes an HTTP request using a specified method.
+func Send(method string, url string, opts ...RequestOption) *Response {
+	return DefaultClient.Send(method, url, opts...)
+}
+
+// Send makes an HTTP request using a specified method.
+func (c *Client) Send(method string, url string, opts ...RequestOption) *Response {
+	req := NewRequest(method, url, nil)
+	for _, opt := range opts {
+		req = opt(req)
+	}
+	return c.Do(req)
 }
 
 // FilterCookies returns the cookies to send in a request for the given URL.
@@ -315,16 +403,58 @@ func (c *Client) FilterCookie(url string, name string) (*http.Cookie, error) {
 	return nil, errors.New("sreq: named cookie for the given URL not present")
 }
 
-// Do sends a raw HTTP request and returns its response.
-func Do(req *http.Request) *Response {
+// Do sends a request and returns its response.
+func Do(req *Request) *Response {
 	return DefaultClient.Do(req)
 }
 
-// Do sends a raw HTTP request and returns its response.
-func (c *Client) Do(req *http.Request) *Response {
-	rawResponse, err := c.RawClient.Do(req)
-	return &Response{
-		RawResponse: rawResponse,
-		Err:         err,
+// Do sends a request and returns its  response.
+func (c *Client) Do(req *Request) *Response {
+	resp := new(Response)
+
+	if c.Err != nil {
+		resp.Err = c.Err
+		return resp
 	}
+
+	if req.Err != nil {
+		resp.Err = req.Err
+		return resp
+	}
+
+	if !req.retry.enable {
+		resp.RawResponse, resp.Err = c.RawClient.Do(req.RawRequest)
+		return resp
+	}
+
+	ctx := req.RawRequest.Context()
+	var err error
+	for i := req.retry.attempts; i > 0; i-- {
+		resp.RawResponse, resp.Err = c.RawClient.Do(req.RawRequest)
+		if err = ctx.Err(); err != nil {
+			resp.Err = err
+			return resp
+		}
+
+		shouldRetry := resp.Err != nil
+		for _, condition := range req.retry.conditions {
+			shouldRetry = condition(resp)
+			if shouldRetry {
+				break
+			}
+		}
+
+		if !shouldRetry {
+			return resp
+		}
+
+		select {
+		case <-time.After(req.retry.delay):
+		case <-ctx.Done():
+			resp.Err = ctx.Err()
+			return resp
+		}
+	}
+
+	return resp
 }

@@ -3,7 +3,6 @@ package sreq
 import (
 	"bytes"
 	"encoding/json"
-	stdurl "net/url"
 	"sort"
 	"strings"
 )
@@ -47,12 +46,12 @@ func (p Params) Del(key string) {
 
 // Encode encodes p into URL-escaped form sorted by key.
 func (p Params) Encode() string {
-	return urlEncode(p, true)
+	return urlEncode(p)
 }
 
-// String encodes p into URL-unescaped form sorted by key.
+// String returns the text representation of p.
 func (p Params) String() string {
-	return urlEncode(p, false)
+	return p.Encode()
 }
 
 // Get returns the value from a map by the given key.
@@ -105,12 +104,12 @@ func (f Form) Del(key string) {
 
 // Encode encodes f into URL-escaped form sorted by key.
 func (f Form) Encode() string {
-	return urlEncode(f, true)
+	return urlEncode(f)
 }
 
-// String encodes f into URL-unescaped form sorted by key.
+// String returns the text representation of f.
 func (f Form) String() string {
-	return urlEncode(f, false)
+	return f.Encode()
 }
 
 // Get returns the value from a map by the given key.
@@ -153,7 +152,7 @@ func (f Files) String() string {
 	return toJSON(f)
 }
 
-func urlEncode(v map[string]string, escape bool) string {
+func urlEncode(v map[string]string) string {
 	keys := make([]string, 0, len(v))
 	for k := range v {
 		keys = append(keys, k)
@@ -166,19 +165,9 @@ func urlEncode(v map[string]string, escape bool) string {
 			sb.WriteString("&")
 		}
 
-		if escape {
-			sb.WriteString(stdurl.QueryEscape(k))
-		} else {
-			sb.WriteString(k)
-		}
-
+		sb.WriteString(k)
 		sb.WriteString("=")
-
-		if escape {
-			sb.WriteString(stdurl.QueryEscape(v[k]))
-		} else {
-			sb.WriteString(v[k])
-		}
+		sb.WriteString(v[k])
 	}
 
 	return sb.String()

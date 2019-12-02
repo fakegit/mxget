@@ -7,5 +7,5 @@ const (
 )
 
 var (
-	DefaultClient = sreq.DefaultClient
+	DefaultClient = sreq.New()
 )

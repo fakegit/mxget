@@ -10,12 +10,13 @@ A simple, user-friendly and concurrent safe HTTP request library for Go, 's' mea
 
 ## Features
 
-- GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS, etc.
+- GET, POST, PUT, PATCH, DELETE, etc.
 - Easy set query params, headers and cookies.
 - Easy send form, JSON or files payload.
 - Easy set basic authentication or bearer token.
 - Easy set proxy.
 - Easy set context.
+- Retry policy support.
 - Automatic cookies management.
 - Easy decode responses, raw data, text representation and unmarshal the JSON-encoded data.
 - Friendly debugging.
@@ -47,8 +48,79 @@ Use `sreq` you just need to change your code like this:
 resp, err := sreq.Get("http://www.google.com").Resolve()
 ```
 
-[Code examples](examples)
+You have two convenient ways to access the APIs of `sreq` .
+
+```go
+const (
+    url       = "http://httpbin.org/get"
+    userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36"
+)
+
+params := sreq.Params{
+    "k1": "v1",
+    "k2": "v2",
+}
+
+client := sreq.New()
+
+// 1
+req := sreq.
+	NewRequest("GET", url, nil).
+	SetQuery(params).
+	SetUserAgent(userAgent)
+err := client.
+	Do(req).
+	EnsureStatusOk().
+	Verbose(ioutil.Discard)
+if err != nil {
+    panic(err)
+}
+
+// 2 (Recommended)
+err = client.Get(url,
+	sreq.WithQuery(params),
+	sreq.WithUserAgent(userAgent),
+).
+	EnsureStatusOk().
+	Verbose(os.Stdout)
+if err != nil {
+    panic(err)
+}
+
+// Output:
+// > GET /get?k1=v1&k2=v2 HTTP/1.1
+// > Host: httpbin.org
+// > User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36
+// >
+// < HTTP/1.1 200 OK
+// < Access-Control-Allow-Origin: *
+// < Content-Type: application/json
+// < Referrer-Policy: no-referrer-when-downgrade
+// < Server: nginx
+// < Access-Control-Allow-Credentials: true
+// < Date: Mon, 02 Dec 2019 06:24:29 GMT
+// < X-Content-Type-Options: nosniff
+// < X-Frame-Options: DENY
+// < X-Xss-Protection: 1; mode=block
+// < Connection: keep-alive
+// <
+// {
+//   "args": {
+//     "k1": "v1",
+//     "k2": "v2"
+//   },
+//   "headers": {
+//     "Accept-Encoding": "gzip",
+//     "Host": "httpbin.org",
+//     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36"
+//   },
+//   "origin": "8.8.8.8, 8.8.8.8",
+//   "url": "https://httpbin.org/get?k1=v1&k2=v2"
+// }
+```
+
+See more [code examples](examples).
 
 ## License
 
-MIT.
+[MIT](LICENSE)

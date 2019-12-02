@@ -18,44 +18,52 @@ type (
 	}
 )
 
-// Resolve resolves r and returns its raw HTTP response.
-func (r *Response) Resolve() (*http.Response, error) {
-	return r.RawResponse, r.Err
+func (resp *Response) raiseError(cause string, err error) {
+	if resp.Err != nil {
+		return
+	}
+
+	resp.Err = fmt.Errorf("sreq [%s]: %s", cause, err.Error())
+}
+
+// Resolve resolves resp and returns its raw HTTP response.
+func (resp *Response) Resolve() (*http.Response, error) {
+	return resp.RawResponse, resp.Err
 }
 
 // Raw decodes the HTTP response body and returns its raw data.
-func (r *Response) Raw() ([]byte, error) {
-	if r.Err != nil {
-		return nil, r.Err
+func (resp *Response) Raw() ([]byte, error) {
+	if resp.Err != nil {
+		return nil, resp.Err
 	}
-	defer r.RawResponse.Body.Close()
+	defer resp.RawResponse.Body.Close()
 
-	return ioutil.ReadAll(r.RawResponse.Body)
+	return ioutil.ReadAll(resp.RawResponse.Body)
 }
 
 // Text decodes the HTTP response body and returns the text representation of its raw data.
-func (r *Response) Text() (string, error) {
-	b, err := r.Raw()
+func (resp *Response) Text() (string, error) {
+	b, err := resp.Raw()
 	return string(b), err
 }
 
 // JSON decodes the HTTP response body and unmarshals its JSON-encoded data into v.
-func (r *Response) JSON(v interface{}) error {
-	if r.Err != nil {
-		return r.Err
+func (resp *Response) JSON(v interface{}) error {
+	if resp.Err != nil {
+		return resp.Err
 	}
-	defer r.RawResponse.Body.Close()
+	defer resp.RawResponse.Body.Close()
 
-	return json.NewDecoder(r.RawResponse.Body).Decode(v)
+	return json.NewDecoder(resp.RawResponse.Body).Decode(v)
 }
 
 // Cookies returns the HTTP response cookies.
-func (r *Response) Cookies() ([]*http.Cookie, error) {
-	if r.Err != nil {
-		return nil, r.Err
+func (resp *Response) Cookies() ([]*http.Cookie, error) {
+	if resp.Err != nil {
+		return nil, resp.Err
 	}
 
-	cookies := r.RawResponse.Cookies()
+	cookies := resp.RawResponse.Cookies()
 	if len(cookies) == 0 {
 		return nil, errors.New("sreq: cookies not present")
 	}
@@ -64,8 +72,8 @@ func (r *Response) Cookies() ([]*http.Cookie, error) {
 }
 
 // Cookie returns the HTTP response named cookie.
-func (r *Response) Cookie(name string) (*http.Cookie, error) {
-	cookies, err := r.Cookies()
+func (resp *Response) Cookie(name string) (*http.Cookie, error) {
+	cookies, err := resp.Cookies()
 	if err != nil {
 		return nil, err
 	}
@@ -80,36 +88,38 @@ func (r *Response) Cookie(name string) (*http.Cookie, error) {
 }
 
 // EnsureStatusOk ensures the HTTP response's status code must be 200.
-func (r *Response) EnsureStatusOk() *Response {
-	return r.EnsureStatus(http.StatusOK)
+func (resp *Response) EnsureStatusOk() *Response {
+	return resp.EnsureStatus(http.StatusOK)
 }
 
 // EnsureStatus2xx ensures the HTTP response's status code must be 2xx.
-func (r *Response) EnsureStatus2xx() *Response {
-	if r.Err != nil {
-		return r
+func (resp *Response) EnsureStatus2xx() *Response {
+	if resp.Err != nil {
+		return resp
 	}
-	if r.RawResponse.StatusCode/100 != 2 {
-		r.Err = fmt.Errorf("sreq: bad status: %d", r.RawResponse.StatusCode)
+	if resp.RawResponse.StatusCode/100 != 2 {
+		resp.raiseError("Response.EnsureStatus2xx",
+			fmt.Errorf("bad status: %d", resp.RawResponse.StatusCode))
 	}
-	return r
+	return resp
 }
 
 // EnsureStatus ensures the HTTP response's status code must be the code parameter.
-func (r *Response) EnsureStatus(code int) *Response {
-	if r.Err != nil {
-		return r
+func (resp *Response) EnsureStatus(code int) *Response {
+	if resp.Err != nil {
+		return resp
 	}
-	if r.RawResponse.StatusCode != code {
-		r.Err = fmt.Errorf("sreq: bad status: %d", r.RawResponse.StatusCode)
+	if resp.RawResponse.StatusCode != code {
+		resp.raiseError("Response.EnsureStatus",
+			fmt.Errorf("bad status: %d", resp.RawResponse.StatusCode))
 	}
-	return r
+	return resp
 }
 
 // Save saves the HTTP response into a file.
-func (r *Response) Save(filename string, perm os.FileMode) error {
-	if r.Err != nil {
-		return r.Err
+func (resp *Response) Save(filename string, perm os.FileMode) error {
+	if resp.Err != nil {
+		return resp.Err
 	}
 
 	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm)
@@ -117,29 +127,29 @@ func (r *Response) Save(filename string, perm os.FileMode) error {
 		return err
 	}
 	defer file.Close()
-	defer r.RawResponse.Body.Close()
+	defer resp.RawResponse.Body.Close()
 
-	_, err = io.Copy(file, r.RawResponse.Body)
+	_, err = io.Copy(file, resp.RawResponse.Body)
 	return err
 }
 
 // Verbose makes the HTTP request and its response more talkative.
 // It's similar to "curl -v", used for debug.
-func (r *Response) Verbose(w io.Writer) error {
-	if r.Err != nil {
-		return r.Err
+func (resp *Response) Verbose(w io.Writer) error {
+	if resp.Err != nil {
+		return resp.Err
 	}
 
-	req := r.RawResponse.Request
-	fmt.Fprintf(w, "> %s %s %s\r\n", req.Method, req.URL.RequestURI(), req.Proto)
-	fmt.Fprintf(w, "> Host: %s\r\n", req.URL.Host)
-	for k := range req.Header {
-		fmt.Fprintf(w, "> %s: %s\r\n", k, req.Header.Get(k))
+	rawRequest := resp.RawResponse.Request
+	fmt.Fprintf(w, "> %s %s %s\r\n", rawRequest.Method, rawRequest.URL.RequestURI(), rawRequest.Proto)
+	fmt.Fprintf(w, "> Host: %s\r\n", rawRequest.URL.Host)
+	for k := range rawRequest.Header {
+		fmt.Fprintf(w, "> %s: %s\r\n", k, rawRequest.Header.Get(k))
 	}
 	fmt.Fprint(w, ">\r\n")
 
-	if req.GetBody != nil && req.ContentLength != 0 {
-		rc, err := req.GetBody()
+	if rawRequest.GetBody != nil && rawRequest.ContentLength != 0 {
+		rc, err := rawRequest.GetBody()
 		if err != nil {
 			return err
 		}
@@ -153,14 +163,14 @@ func (r *Response) Verbose(w io.Writer) error {
 		fmt.Fprint(w, "\r\n")
 	}
 
-	resp := r.RawResponse
-	fmt.Fprintf(w, "< %s %s\r\n", resp.Proto, resp.Status)
-	for k := range resp.Header {
-		fmt.Fprintf(w, "< %s: %s\r\n", k, resp.Header.Get(k))
+	rawResponse := resp.RawResponse
+	fmt.Fprintf(w, "< %s %s\r\n", rawResponse.Proto, rawResponse.Status)
+	for k := range rawResponse.Header {
+		fmt.Fprintf(w, "< %s: %s\r\n", k, rawResponse.Header.Get(k))
 	}
 	fmt.Fprint(w, "<\r\n")
 
-	defer resp.Body.Close()
-	_, err := io.Copy(w, resp.Body)
+	defer rawResponse.Body.Close()
+	_, err := io.Copy(w, rawResponse.Body)
 	return err
 }
