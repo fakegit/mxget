@@ -352,15 +352,15 @@ func (c *Client) SetUserAgent(userAgent string) *Client {
 	return c
 }
 
-// AppendCookies appends cookies of the client.
+// SetCookies sets cookies of the client.
 // These cookies will be applied to all requests raised from this client instance.
-func AppendCookies(cookies ...*http.Cookie) *Client {
-	return DefaultClient.AppendCookies(cookies...)
+func SetCookies(cookies ...*http.Cookie) *Client {
+	return DefaultClient.SetCookies(cookies...)
 }
 
-// AppendCookies appends cookies of the client.
+// SetCookies sets cookies of the client.
 // These cookies will be applied to all requests raised from this client instance.
-func (c *Client) AppendCookies(cookies ...*http.Cookie) *Client {
+func (c *Client) SetCookies(cookies ...*http.Cookie) *Client {
 	c.Cookies = append(c.Cookies, cookies...)
 	return c
 }
@@ -581,7 +581,7 @@ func (c *Client) Do(req *Request) *Response {
 	c.setHost(req)
 	c.setHeaders(req)
 	c.setUserAgent(req)
-	c.appendCookies(req)
+	c.setCookies(req)
 	c.setBasicAuth(req)
 	c.setBearerToken(req)
 	c.setContext(req)
@@ -621,7 +621,7 @@ func (c *Client) setUserAgent(req *Request) {
 	req.RawRequest.Header.Set("User-Agent", userAgent)
 }
 
-func (c *Client) appendCookies(req *Request) {
+func (c *Client) setCookies(req *Request) {
 	for _, c := range c.Cookies {
 		req.RawRequest.AddCookie(c)
 	}

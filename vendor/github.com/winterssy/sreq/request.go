@@ -291,8 +291,8 @@ func existsFile(filename string) (bool, error) {
 	return true, err
 }
 
-// AppendCookies appends cookies for the HTTP request.
-func (req *Request) AppendCookies(cookies ...*http.Cookie) *Request {
+// SetCookies sets cookies for the HTTP request.
+func (req *Request) SetCookies(cookies ...*http.Cookie) *Request {
 	if req.Err != nil {
 		return req
 	}
@@ -421,7 +421,7 @@ func WithFiles(files Files) RequestOption {
 // WithCookies appends cookies for the HTTP request.
 func WithCookies(cookies ...*http.Cookie) RequestOption {
 	return func(req *Request) *Request {
-		return req.AppendCookies(cookies...)
+		return req.SetCookies(cookies...)
 	}
 }
 
