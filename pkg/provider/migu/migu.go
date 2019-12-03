@@ -42,10 +42,9 @@ var (
 	}
 
 	defaultHeaders = sreq.Headers{
-		"channel":    "0",
-		"Origin":     "http://music.migu.cn/v3",
-		"Referer":    "http://music.migu.cn/v3",
-		"User-Agent": request.UserAgent,
+		"channel": "0",
+		"Origin":  "http://music.migu.cn/v3",
+		"Referer": "http://music.migu.cn/v3",
 	}
 )
 
@@ -193,7 +192,7 @@ type (
 
 func New(client *sreq.Client) *API {
 	if client == nil {
-		client = sreq.New()
+		client = sreq.New().SetUserAgent(request.UserAgent)
 	}
 	return &API{
 		Client: client,

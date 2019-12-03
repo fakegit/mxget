@@ -26,9 +26,8 @@ var (
 	std = New(request.DefaultClient)
 
 	defaultHeaders = sreq.Headers{
-		"Origin":     "http://music.taihe.com",
-		"Referer":    "http://music.taihe.com",
-		"User-Agent": request.UserAgent,
+		"Origin":  "http://music.taihe.com",
+		"Referer": "http://music.taihe.com",
 	}
 )
 
@@ -143,7 +142,7 @@ type (
 
 func New(client *sreq.Client) *API {
 	if client == nil {
-		client = sreq.New()
+		client = sreq.New().SetUserAgent(request.UserAgent)
 	}
 	return &API{
 		Client: client,

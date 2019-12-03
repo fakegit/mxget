@@ -1,8 +1,10 @@
 package sreq
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -21,40 +23,55 @@ const (
 
 var (
 	// DefaultClient is the default sreq Client.
-	DefaultClient *Client
-
-	// DefaultCookieJar is the cookie jar used by DefaultClient.
-	DefaultCookieJar http.CookieJar
+	DefaultClient = New()
 
 	errUnexpectedTransport = errors.New("current transport isn't a non-nil *http.Transport instance")
 )
 
 type (
 	// Client wraps the raw HTTP client.
+	// Do not modify the client across Goroutines!
+	// You should reuse it once initialized.
 	Client struct {
 		RawClient *http.Client
 		Err       error
+
+		host        string
+		headers     Headers
+		userAgent   string
+		cookies     []*http.Cookie
+		auth        *auth
+		bearerToken string
+		ctx         context.Context
+		retry       *retry
+	}
+
+	auth struct {
+		username string
+		password string
+	}
+
+	retry struct {
+		attempts   int
+		delay      time.Duration
+		conditions []func(*Response) bool
 	}
 )
-
-func init() {
-	DefaultCookieJar, _ = cookiejar.New(&cookiejar.Options{
-		PublicSuffixList: publicsuffix.List,
-	})
-	DefaultClient = New()
-}
 
 // New returns a new Client.
 // It's a clone of DefaultClient indeed.
 func New() *Client {
-	rawClient := &http.Client{}
+	jar, _ := cookiejar.New(&cookiejar.Options{
+		PublicSuffixList: publicsuffix.List,
+	})
+	rawClient := &http.Client{
+		Transport: DefaultTransport(),
+		Jar:       jar,
+		Timeout:   DefaultTimeout,
+	}
 	client := &Client{
 		RawClient: rawClient,
 	}
-
-	client.SetTransport(DefaultTransport()).
-		SetCookieJar(DefaultCookieJar).
-		SetTimeout(DefaultTimeout)
 	return client
 }
 
@@ -285,6 +302,146 @@ func (c *Client) DisableVerify() *Client {
 	return c
 }
 
+// SetHost sets host of the client.
+// The host will be applied to all requests raised from this client instance.
+// Also it can be overridden at request level host options.
+func SetHost(host string) *Client {
+	return DefaultClient.SetHost(host)
+}
+
+// SetHost sets host of the client.
+// The host will be applied to all requests raised from this client instance.
+// Also it can be overridden at request level host options.
+func (c *Client) SetHost(host string) *Client {
+	c.host = host
+	return c
+}
+
+// SetHeaders sets headers of the client.
+// These headers will be applied to all requests raised from this client instance.
+// Also it can be overridden at request level headers options.
+func SetHeaders(headers Headers) *Client {
+	return DefaultClient.SetHeaders(headers)
+}
+
+// SetHeaders sets headers of the client.
+// These headers will be applied to all requests raised from this client instance.
+// Also it can be overridden at request level headers options.
+func (c *Client) SetHeaders(headers Headers) *Client {
+	if c.headers == nil {
+		c.headers = make(Headers, len(headers))
+	}
+
+	for k, v := range headers {
+		c.headers.Set(k, v)
+	}
+	return c
+}
+
+// SetUserAgent sets User-Agent header value of the client.
+// The user agent will be applied to all requests raised from this client instance.
+// Also it can be overridden at request level user agent options.
+func SetUserAgent(userAgent string) *Client {
+	return DefaultClient.SetUserAgent(userAgent)
+}
+
+// SetUserAgent sets User-Agent header value of the client.
+// The user agent will be applied to all requests raised from this client instance.
+// Also it can be overridden at request level user agent options.
+func (c *Client) SetUserAgent(userAgent string) *Client {
+	c.userAgent = userAgent
+	return c
+}
+
+// AppendCookies appends cookies of the client.
+// These cookies will be applied to all requests raised from this client instance.
+func AppendCookies(cookies ...*http.Cookie) *Client {
+	return DefaultClient.AppendCookies(cookies...)
+}
+
+// AppendCookies appends cookies of the client.
+// These cookies will be applied to all requests raised from this client instance.
+func (c *Client) AppendCookies(cookies ...*http.Cookie) *Client {
+	c.cookies = append(c.cookies, cookies...)
+	return c
+}
+
+// SetBasicAuth sets basic authentication of the client.
+// The basic authentication will be applied to all requests raised from this client instance.
+// Also it can be overridden at request level basic authentication options.
+func SetBasicAuth(username string, password string) *Client {
+	return DefaultClient.SetBasicAuth(username, password)
+}
+
+// SetBasicAuth sets basic authentication of the client.
+// The basic authentication will be applied to all requests raised from this client instance.
+// Also it can be overridden at request level basic authentication options.
+func (c *Client) SetBasicAuth(username string, password string) *Client {
+	c.auth = &auth{
+		username: username,
+		password: password,
+	}
+	return c
+}
+
+// SetBearerToken sets bearer token of the client.
+// The bearer token will be applied to all requests raised from this client instance.
+// Also it can be overridden at request level bearer token options.
+func SetBearerToken(token string) *Client {
+	return DefaultClient.SetBearerToken(token)
+}
+
+// SetBearerToken sets bearer token of the client.
+// The bearer token will be applied to all requests raised from this client instance.
+// Also it can be overridden at request level bearer token options.
+func (c *Client) SetBearerToken(token string) *Client {
+	c.bearerToken = token
+	return c
+}
+
+// SetContext sets context of the client.
+// The context will be applied to all requests raised from this client instance.
+// Also it can be overridden at request level context options.
+func SetContext(ctx context.Context) *Client {
+	return DefaultClient.SetContext(ctx)
+}
+
+// SetContext sets context of the client.
+// The context will be applied to all requests raised from this client instance.
+// Also it can be overridden at request level context options.
+func (c *Client) SetContext(ctx context.Context) *Client {
+	if ctx == nil {
+		c.raiseError("Client.SetContext", errors.New("nil Context"))
+		return c
+	}
+
+	c.ctx = ctx
+	return c
+}
+
+// SetRetryPolicy sets retry policy of the client.
+// The retry policy will be applied to all requests raised from this client instance.
+// Also it can be overridden at request level retry policy options.
+func SetRetryPolicy(attempts int, delay time.Duration,
+	conditions ...func(*Response) bool) *Client {
+	return DefaultClient.SetRetryPolicy(attempts, delay, conditions...)
+}
+
+// SetRetryPolicy sets retry policy of the client.
+// The retry policy will be applied to all requests raised from this client instance.
+// Also it can be overridden at request level retry policy options.
+func (c *Client) SetRetryPolicy(attempts int, delay time.Duration,
+	conditions ...func(*Response) bool) *Client {
+	if attempts > 1 {
+		c.retry = &retry{
+			attempts:   attempts,
+			delay:      delay,
+			conditions: conditions,
+		}
+	}
+	return c
+}
+
 // Get makes a GET HTTP request.
 func Get(url string, opts ...RequestOption) *Response {
 	return DefaultClient.Get(url, opts...)
@@ -422,22 +579,119 @@ func (c *Client) Do(req *Request) *Response {
 		return resp
 	}
 
-	if !req.retry.enable {
+	c.setHost(req)
+	c.setHeaders(req)
+	c.setUserAgent(req)
+	c.appendCookies(req)
+	c.setBasicAuth(req)
+	c.setBearerToken(req)
+	c.setContext(req)
+	c.doWithRetry(req, resp)
+	return resp
+}
+
+func (c *Client) setHost(req *Request) {
+	host := c.host
+	if req.host != "" {
+		host = req.host
+	}
+
+	if host != "" {
+		req.RawRequest.Host = host
+	}
+}
+
+func (c *Client) setHeaders(req *Request) {
+	for k, v := range c.headers {
+		req.RawRequest.Header.Set(k, v)
+	}
+
+	for k, v := range req.headers {
+		req.RawRequest.Header.Set(k, v)
+	}
+}
+
+func (c *Client) setUserAgent(req *Request) {
+	userAgent := "sreq " + Version
+	if req.userAgent != "" {
+		userAgent = req.userAgent
+	} else if c.userAgent != "" {
+		userAgent = c.userAgent
+	}
+
+	req.RawRequest.Header.Set("User-Agent", userAgent)
+}
+
+func (c *Client) appendCookies(req *Request) {
+	for _, c := range c.cookies {
+		req.RawRequest.AddCookie(c)
+	}
+
+	for _, c := range req.cookies {
+		req.RawRequest.AddCookie(c)
+	}
+}
+
+func (c *Client) setBasicAuth(req *Request) {
+	auth := c.auth
+	if req.auth != nil {
+		auth = req.auth
+	}
+
+	if auth != nil {
+		req.RawRequest.Header.Set("Authorization", "Basic "+basicAuth(auth.username, auth.password))
+	}
+}
+
+func basicAuth(username, password string) string {
+	auth := username + ":" + password
+	return base64.StdEncoding.EncodeToString([]byte(auth))
+}
+
+func (c *Client) setBearerToken(req *Request) {
+	token := c.bearerToken
+	if req.bearerToken != "" {
+		token = req.bearerToken
+	}
+
+	if token != "" {
+		req.RawRequest.Header.Set("Authorization", "Bearer "+token)
+	}
+}
+
+func (c *Client) setContext(req *Request) {
+	ctx := c.ctx
+	if req.ctx != nil {
+		ctx = req.ctx
+	}
+
+	if ctx != nil {
+		req.RawRequest = req.RawRequest.WithContext(ctx)
+	}
+}
+
+func (c *Client) doWithRetry(req *Request, resp *Response) {
+	if req.retry == nil && c.retry == nil {
 		resp.RawResponse, resp.Err = c.RawClient.Do(req.RawRequest)
-		return resp
+		return
+	}
+
+	retry := req.retry
+	if retry == nil {
+		retry = c.retry
 	}
 
 	ctx := req.RawRequest.Context()
 	var err error
-	for i := req.retry.attempts; i > 0; i-- {
+	for i := retry.attempts; i > 0; i-- {
 		resp.RawResponse, resp.Err = c.RawClient.Do(req.RawRequest)
 		if err = ctx.Err(); err != nil {
 			resp.Err = err
-			return resp
+			return
 		}
 
 		shouldRetry := resp.Err != nil
-		for _, condition := range req.retry.conditions {
+		for _, condition := range retry.conditions {
 			shouldRetry = condition(resp)
 			if shouldRetry {
 				break
@@ -445,16 +699,14 @@ func (c *Client) Do(req *Request) *Response {
 		}
 
 		if !shouldRetry {
-			return resp
+			return
 		}
 
 		select {
-		case <-time.After(req.retry.delay):
+		case <-time.After(retry.delay):
 		case <-ctx.Done():
 			resp.Err = ctx.Err()
-			return resp
+			return
 		}
 	}
-
-	return resp
 }

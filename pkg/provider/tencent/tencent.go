@@ -35,9 +35,8 @@ var (
 	std = New(request.DefaultClient)
 
 	defaultHeaders = sreq.Headers{
-		"Origin":     "https://c.y.qq.com",
-		"Referer":    "https://c.y.qq.com",
-		"User-Agent": request.UserAgent,
+		"Origin":  "https://c.y.qq.com",
+		"Referer": "https://c.y.qq.com",
 	}
 )
 
@@ -166,7 +165,7 @@ type (
 
 func New(client *sreq.Client) *API {
 	if client == nil {
-		client = sreq.New()
+		client = sreq.New().SetUserAgent(request.UserAgent)
 	}
 	return &API{
 		Client: client,

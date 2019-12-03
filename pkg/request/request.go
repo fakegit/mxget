@@ -7,5 +7,5 @@ const (
 )
 
 var (
-	DefaultClient = sreq.New()
+	DefaultClient = sreq.New().SetUserAgent(UserAgent)
 )

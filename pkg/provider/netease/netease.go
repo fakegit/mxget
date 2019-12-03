@@ -36,9 +36,8 @@ var (
 	cookie *http.Cookie
 
 	defaultHeaders = sreq.Headers{
-		"Origin":     "https://music.163.com",
-		"Referer":    "https://music.163.com",
-		"User-Agent": request.UserAgent,
+		"Origin":  "https://music.163.com",
+		"Referer": "https://music.163.com",
 	}
 )
 
@@ -169,7 +168,7 @@ func init() {
 
 func New(client *sreq.Client) *API {
 	if client == nil {
-		client = sreq.New()
+		client = sreq.New().SetUserAgent(request.UserAgent)
 	}
 	return &API{
 		Client: client,

@@ -3,7 +3,6 @@ package sreq
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -52,18 +51,18 @@ type (
 		RawRequest *http.Request
 		Err        error
 
-		retry retry
+		host        string
+		headers     Headers
+		userAgent   string
+		cookies     []*http.Cookie
+		auth        *auth
+		bearerToken string
+		ctx         context.Context
+		retry       *retry
 	}
 
 	// RequestOption specifies the request options, like params, form, etc.
 	RequestOption func(*Request) *Request
-
-	retry struct {
-		enable     bool
-		attempts   int
-		delay      time.Duration
-		conditions []func(*Response) bool
-	}
 )
 
 func (req *Request) raiseError(cause string, err error) {
@@ -83,7 +82,6 @@ func NewRequest(method string, url string, body io.Reader) *Request {
 		return req
 	}
 
-	rawRequest.Header.Set("User-Agent", "sreq "+Version)
 	req.RawRequest = rawRequest
 	return req
 }
@@ -95,26 +93,46 @@ func (req *Request) Resolve() (*http.Request, error) {
 
 // SetHost specifies the host on which the URL is sought.
 func (req *Request) SetHost(host string) *Request {
-	req.RawRequest.Host = host
+	if req.Err != nil {
+		return req
+	}
+
+	req.host = host
 	return req
 }
 
 // SetHeaders sets headers for the HTTP request.
 func (req *Request) SetHeaders(headers Headers) *Request {
+	if req.Err != nil {
+		return req
+	}
+
+	if req.headers == nil {
+		req.headers = make(Headers, len(headers))
+	}
+
 	for k, v := range headers {
-		req.RawRequest.Header.Set(k, v)
+		req.headers.Set(k, v)
 	}
 	return req
 }
 
 // SetUserAgent sets User-Agent header value for the HTTP request.
 func (req *Request) SetUserAgent(userAgent string) *Request {
-	req.RawRequest.Header.Set("User-Agent", userAgent)
+	if req.Err != nil {
+		return req
+	}
+
+	req.userAgent = userAgent
 	return req
 }
 
 // SetQuery sets query params for the HTTP request.
 func (req *Request) SetQuery(params Params) *Request {
+	if req.Err != nil {
+		return req
+	}
+
 	query := req.RawRequest.URL.Query()
 	for k, v := range params {
 		query.Set(k, v)
@@ -126,6 +144,10 @@ func (req *Request) SetQuery(params Params) *Request {
 
 // SetRaw sets raw bytes payload for the HTTP request.
 func (req *Request) SetRaw(raw []byte, contentType string) *Request {
+	if req.Err != nil {
+		return req
+	}
+
 	r := bytes.NewBuffer(raw)
 	req.RawRequest.Body = ioutil.NopCloser(r)
 	req.RawRequest.ContentLength = int64(r.Len())
@@ -141,6 +163,10 @@ func (req *Request) SetRaw(raw []byte, contentType string) *Request {
 
 // SetText sets plain text payload for the HTTP request.
 func (req *Request) SetText(text string) *Request {
+	if req.Err != nil {
+		return req
+	}
+
 	r := bytes.NewBufferString(text)
 	req.RawRequest.Body = ioutil.NopCloser(r)
 	req.RawRequest.ContentLength = int64(r.Len())
@@ -156,6 +182,10 @@ func (req *Request) SetText(text string) *Request {
 
 // SetForm sets form payload for the HTTP request.
 func (req *Request) SetForm(form Form) *Request {
+	if req.Err != nil {
+		return req
+	}
+
 	data := stdurl.Values{}
 	for k, v := range form {
 		data.Set(k, v)
@@ -176,6 +206,10 @@ func (req *Request) SetForm(form Form) *Request {
 
 // SetJSON sets json payload for the HTTP request.
 func (req *Request) SetJSON(data JSON, escapeHTML bool) *Request {
+	if req.Err != nil {
+		return req
+	}
+
 	b, err := jsonMarshal(data, "", "", escapeHTML)
 	if err != nil {
 		req.raiseError("Request.SetJSON", err)
@@ -197,6 +231,10 @@ func (req *Request) SetJSON(data JSON, escapeHTML bool) *Request {
 
 // SetFiles sets files payload for the HTTP request.
 func (req *Request) SetFiles(files Files) *Request {
+	if req.Err != nil {
+		return req
+	}
+
 	for fieldName, filePath := range files {
 		if _, err := existsFile(filePath); err != nil {
 			req.raiseError("Request.SetFiles",
@@ -251,49 +289,66 @@ func existsFile(filename string) (bool, error) {
 	return true, err
 }
 
-// SetCookies sets cookies for the HTTP request.
-func (req *Request) SetCookies(cookies ...*http.Cookie) *Request {
-	for _, c := range cookies {
-		req.RawRequest.AddCookie(c)
+// AppendCookies appends cookies for the HTTP request.
+func (req *Request) AppendCookies(cookies ...*http.Cookie) *Request {
+	if req.Err != nil {
+		return req
 	}
+
+	req.cookies = append(req.cookies, cookies...)
 	return req
 }
 
 // SetBasicAuth sets basic authentication for the HTTP request.
 func (req *Request) SetBasicAuth(username string, password string) *Request {
-	req.RawRequest.Header.Set("Authorization", "Basic "+basicAuth(username, password))
-	return req
-}
+	if req.Err != nil {
+		return req
+	}
 
-func basicAuth(username, password string) string {
-	auth := username + ":" + password
-	return base64.StdEncoding.EncodeToString([]byte(auth))
+	req.auth = &auth{
+		username: username,
+		password: password,
+	}
+	return req
 }
 
 // SetBearerToken sets bearer token for the HTTP request.
 func (req *Request) SetBearerToken(token string) *Request {
-	req.RawRequest.Header.Set("Authorization", "Bearer "+token)
+	if req.Err != nil {
+		return req
+	}
+
+	req.bearerToken = token
 	return req
 }
 
 // SetContext sets context for the HTTP request.
 func (req *Request) SetContext(ctx context.Context) *Request {
+	if req.Err != nil {
+		return req
+	}
+
 	if ctx == nil {
 		req.raiseError("Request.SetContext", errors.New("nil Context"))
 		return req
 	}
 
-	req.RawRequest = req.RawRequest.WithContext(ctx)
+	req.ctx = ctx
 	return req
 }
 
 // SetRetry sets retry policy for the HTTP request.
 func (req *Request) SetRetry(attempts int, delay time.Duration, conditions ...func(*Response) bool) *Request {
+	if req.Err != nil {
+		return req
+	}
+
 	if attempts > 1 {
-		req.retry.enable = true
-		req.retry.attempts = attempts
-		req.retry.delay = delay
-		req.retry.conditions = conditions
+		req.retry = &retry{
+			attempts:   attempts,
+			delay:      delay,
+			conditions: conditions,
+		}
 	}
 	return req
 }
@@ -361,10 +416,10 @@ func WithFiles(files Files) RequestOption {
 	}
 }
 
-// WithCookies sets cookies for the HTTP request.
+// WithCookies appends cookies for the HTTP request.
 func WithCookies(cookies ...*http.Cookie) RequestOption {
 	return func(req *Request) *Request {
-		return req.SetCookies(cookies...)
+		return req.AppendCookies(cookies...)
 	}
 }
 

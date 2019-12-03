@@ -1,12 +1,8 @@
 # sreq
 
-A simple, user-friendly and concurrent safe HTTP request library for Go, 's' means simple.
+A simple, user-friendly and concurrent safe HTTP request library for Go, 's' means simple. `sreq` provides many convenient APIs to access `net/http` , aims to simplify your work efficiently. 
 
 [![Actions Status](https://github.com/winterssy/sreq/workflows/Test/badge.svg)](https://github.com/winterssy/sreq/actions) [![Mentioned in Awesome Go](https://awesome.re/mentioned-badge.svg)](https://github.com/avelino/awesome-go) [![codecov](https://codecov.io/gh/winterssy/sreq/branch/master/graph/badge.svg)](https://codecov.io/gh/winterssy/sreq) [![Go Report Card](https://goreportcard.com/badge/github.com/winterssy/sreq)](https://goreportcard.com/report/github.com/winterssy/sreq) [![GoDoc](https://godoc.org/github.com/winterssy/sreq?status.svg)](https://godoc.org/github.com/winterssy/sreq) [![License](https://img.shields.io/github/license/winterssy/sreq.svg)](LICENSE)
-
-## Notes
-
-`sreq` now is under an alpha test state, its APIs may be changed in future so it's not recommended to use in production. Welcome to give advise to the project.
 
 ## Features
 
@@ -36,7 +32,7 @@ import "github.com/winterssy/sreq"
 
 ## Quick start
 
-The usages of `sreq` are very similar to `net/http` library, you can switch from it to `sreq` easily. For example, if your HTTP request code like this:
+The usages of `sreq` are very similar to `net/http` , you can switch from it to `sreq` easily. For example, if your HTTP request code like this:
 
 ```go
 resp, err := http.Get("http://www.google.com")
@@ -48,7 +44,7 @@ Use `sreq` you just need to change your code like this:
 resp, err := sreq.Get("http://www.google.com").Resolve()
 ```
 
-You have two convenient ways to access the APIs of `sreq` .
+You have two ways to access the APIs of `sreq` .
 
 ```go
 const (
@@ -119,7 +115,13 @@ if err != nil {
 // }
 ```
 
-See more [code examples](examples).
+[Code examples](examples)
+
+## Projects
+
+`sreq` is used by the following projects.
+
+- [mxget](https://github.com/winterssy/mxget)
 
 ## License
 

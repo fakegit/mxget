@@ -5,11 +5,16 @@ import (
 	"encoding/json"
 	"sort"
 	"strings"
+	"sync"
 )
 
 const (
 	// Version of sreq.
 	Version = "0.1.0"
+)
+
+var (
+	bufPool = &sync.Pool{New: func() interface{} { return &bytes.Buffer{} }}
 )
 
 type (
@@ -29,6 +34,17 @@ type (
 	Files map[string]string
 )
 
+func acquireBuffer() *bytes.Buffer {
+	return bufPool.Get().(*bytes.Buffer)
+}
+
+func releaseBuffer(buf *bytes.Buffer) {
+	if buf != nil {
+		buf.Reset()
+		bufPool.Put(buf)
+	}
+}
+
 // Get returns the value from a map by the given key.
 func (p Params) Get(key string) string {
 	return p[key]
@@ -44,7 +60,33 @@ func (p Params) Del(key string) {
 	delete(p, key)
 }
 
-// Encode encodes p into URL-escaped form sorted by key.
+// Clone returns a copy of p or nil if p is nil.
+func (p Params) Clone() Params {
+	if p == nil {
+		return nil
+	}
+
+	p2 := make(Params, len(p))
+	for k, v := range p {
+		p2[k] = v
+	}
+	return p2
+}
+
+// Merge merges params to the copy of p and returns the merged Params.
+func (p Params) Merge(params Params) Params {
+	p2 := p.Clone()
+	if p2 == nil {
+		return params
+	}
+
+	for k, v := range params {
+		p2[k] = v
+	}
+	return p2
+}
+
+// Encode encodes p into URL-unescaped form sorted by key.
 func (p Params) Encode() string {
 	return urlEncode(p)
 }
@@ -82,6 +124,19 @@ func (h Headers) Clone() Headers {
 	return h2
 }
 
+// Merge merges headers to the copy of h and returns the merged Headers.
+func (h Headers) Merge(headers Headers) Headers {
+	h2 := h.Clone()
+	if h2 == nil {
+		return headers
+	}
+
+	for k, v := range headers {
+		h2[k] = v
+	}
+	return h2
+}
+
 // String returns the JSON-encoded text representation of h.
 func (h Headers) String() string {
 	return toJSON(h)
@@ -102,7 +157,33 @@ func (f Form) Del(key string) {
 	delete(f, key)
 }
 
-// Encode encodes f into URL-escaped form sorted by key.
+// Clone returns a copy of f or nil if f is nil.
+func (f Form) Clone() Form {
+	if f == nil {
+		return nil
+	}
+
+	f2 := make(Form, len(f))
+	for k, v := range f {
+		f2[k] = v
+	}
+	return f2
+}
+
+// Merge merges form to the copy of f and returns the merged Form.
+func (f Form) Merge(form Form) Form {
+	f2 := f.Clone()
+	if f2 == nil {
+		return form
+	}
+
+	for k, v := range form {
+		f2[k] = v
+	}
+	return f2
+}
+
+// Encode encodes f into URL-unescaped form sorted by key.
 func (f Form) Encode() string {
 	return urlEncode(f)
 }
@@ -125,6 +206,32 @@ func (j JSON) Set(key string, value interface{}) {
 // Del deletes the value related to the given key from a map.
 func (j JSON) Del(key string) {
 	delete(j, key)
+}
+
+// Clone returns a copy of j or nil if j is nil.
+func (j JSON) Clone() JSON {
+	if j == nil {
+		return nil
+	}
+
+	j2 := make(JSON, len(j))
+	for k, v := range j {
+		j2[k] = v
+	}
+	return j2
+}
+
+// Merge merges data to the copy of j and returns the merged JSON.
+func (j JSON) Merge(data JSON) JSON {
+	j2 := j.Clone()
+	if j2 == nil {
+		return data
+	}
+
+	for k, v := range data {
+		j2[k] = v
+	}
+	return j2
 }
 
 // String returns the JSON-encoded text representation of j.
@@ -182,7 +289,9 @@ func toJSON(data interface{}) string {
 }
 
 func jsonMarshal(v interface{}, prefix string, indent string, escapeHTML bool) ([]byte, error) {
-	buf := &bytes.Buffer{}
+	buf := acquireBuffer()
+	defer releaseBuffer(buf)
+
 	encoder := json.NewEncoder(buf)
 	encoder.SetIndent(prefix, indent)
 	encoder.SetEscapeHTML(escapeHTML)
