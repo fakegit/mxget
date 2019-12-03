@@ -3,7 +3,6 @@ package sreq
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -49,12 +48,12 @@ type (
 	// Request wraps the raw HTTP request.
 	Request struct {
 		RawRequest *http.Request
+		Host       string
+		Headers    Headers
+		UserAgent  string
+		Cookies    []*http.Cookie
 		Err        error
 
-		host        string
-		headers     Headers
-		userAgent   string
-		cookies     []*http.Cookie
 		auth        *auth
 		bearerToken string
 		ctx         context.Context
@@ -70,7 +69,10 @@ func (req *Request) raiseError(cause string, err error) {
 		return
 	}
 
-	req.Err = fmt.Errorf("sreq [%s]: %s", cause, err.Error())
+	req.Err = &RequestError{
+		Cause: cause,
+		Err:   err,
+	}
 }
 
 // NewRequest returns a new Request given a method, URL and optional body.
@@ -97,7 +99,7 @@ func (req *Request) SetHost(host string) *Request {
 		return req
 	}
 
-	req.host = host
+	req.Host = host
 	return req
 }
 
@@ -107,12 +109,12 @@ func (req *Request) SetHeaders(headers Headers) *Request {
 		return req
 	}
 
-	if req.headers == nil {
-		req.headers = make(Headers, len(headers))
+	if req.Headers == nil {
+		req.Headers = make(Headers, len(headers))
 	}
 
 	for k, v := range headers {
-		req.headers.Set(k, v)
+		req.Headers.Set(k, v)
 	}
 	return req
 }
@@ -123,7 +125,7 @@ func (req *Request) SetUserAgent(userAgent string) *Request {
 		return req
 	}
 
-	req.userAgent = userAgent
+	req.UserAgent = userAgent
 	return req
 }
 
@@ -176,7 +178,7 @@ func (req *Request) SetText(text string) *Request {
 		return ioutil.NopCloser(r), nil
 	}
 
-	req.RawRequest.Header.Set("Content-Type", "text/plain")
+	req.RawRequest.Header.Set("Content-Type", "text/plain; charset=utf-8")
 	return req
 }
 
@@ -212,7 +214,7 @@ func (req *Request) SetJSON(data JSON, escapeHTML bool) *Request {
 
 	b, err := jsonMarshal(data, "", "", escapeHTML)
 	if err != nil {
-		req.raiseError("Request.SetJSON", err)
+		req.raiseError("SetJSON", err)
 		return req
 	}
 
@@ -237,7 +239,7 @@ func (req *Request) SetFiles(files Files) *Request {
 
 	for fieldName, filePath := range files {
 		if _, err := existsFile(filePath); err != nil {
-			req.raiseError("Request.SetFiles",
+			req.raiseError("SetFiles",
 				fmt.Errorf("file for %q not ready: %s", fieldName, err.Error()))
 			return req
 		}
@@ -295,7 +297,7 @@ func (req *Request) AppendCookies(cookies ...*http.Cookie) *Request {
 		return req
 	}
 
-	req.cookies = append(req.cookies, cookies...)
+	req.Cookies = append(req.Cookies, cookies...)
 	return req
 }
 
@@ -329,7 +331,7 @@ func (req *Request) SetContext(ctx context.Context) *Request {
 	}
 
 	if ctx == nil {
-		req.raiseError("Request.SetContext", errors.New("nil Context"))
+		req.raiseError("SetContext", ErrNilContext)
 		return req
 	}
 

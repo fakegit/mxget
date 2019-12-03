@@ -2,7 +2,6 @@ package sreq
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -17,14 +16,6 @@ type (
 		Err         error
 	}
 )
-
-func (resp *Response) raiseError(cause string, err error) {
-	if resp.Err != nil {
-		return
-	}
-
-	resp.Err = fmt.Errorf("sreq [%s]: %s", cause, err.Error())
-}
 
 // Resolve resolves resp and returns its raw HTTP response.
 func (resp *Response) Resolve() (*http.Response, error) {
@@ -65,7 +56,7 @@ func (resp *Response) Cookies() ([]*http.Cookie, error) {
 
 	cookies := resp.RawResponse.Cookies()
 	if len(cookies) == 0 {
-		return nil, errors.New("sreq: cookies not present")
+		return nil, ErrResponseCookiesNotPresent
 	}
 
 	return cookies, nil
@@ -84,7 +75,7 @@ func (resp *Response) Cookie(name string) (*http.Cookie, error) {
 		}
 	}
 
-	return nil, errors.New("sreq: named cookie not present")
+	return nil, ErrResponseNameCookieNotPresent
 }
 
 // EnsureStatusOk ensures the HTTP response's status code must be 200.
@@ -98,8 +89,7 @@ func (resp *Response) EnsureStatus2xx() *Response {
 		return resp
 	}
 	if resp.RawResponse.StatusCode/100 != 2 {
-		resp.raiseError("Response.EnsureStatus2xx",
-			fmt.Errorf("bad status: %d", resp.RawResponse.StatusCode))
+		resp.Err = fmt.Errorf("bad status: %d", resp.RawResponse.StatusCode)
 	}
 	return resp
 }
@@ -110,8 +100,7 @@ func (resp *Response) EnsureStatus(code int) *Response {
 		return resp
 	}
 	if resp.RawResponse.StatusCode != code {
-		resp.raiseError("Response.EnsureStatus",
-			fmt.Errorf("bad status: %d", resp.RawResponse.StatusCode))
+		resp.Err = fmt.Errorf("bad status: %d", resp.RawResponse.StatusCode)
 	}
 	return resp
 }

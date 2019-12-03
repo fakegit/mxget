@@ -5,8 +5,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
-	"errors"
-	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/http/cookiejar"
@@ -24,8 +22,6 @@ const (
 var (
 	// DefaultClient is the default sreq Client.
 	DefaultClient = New()
-
-	errUnexpectedTransport = errors.New("current transport isn't a non-nil *http.Transport instance")
 )
 
 type (
@@ -34,12 +30,12 @@ type (
 	// You should reuse it once initialized.
 	Client struct {
 		RawClient *http.Client
+		Host      string
+		Headers   Headers
+		UserAgent string
+		Cookies   []*http.Cookie
 		Err       error
 
-		host        string
-		headers     Headers
-		userAgent   string
-		cookies     []*http.Cookie
 		auth        *auth
 		bearerToken string
 		ctx         context.Context
@@ -78,7 +74,7 @@ func New() *Client {
 func (c *Client) httpTransport() (*http.Transport, error) {
 	t, ok := c.RawClient.Transport.(*http.Transport)
 	if !ok || t == nil {
-		return nil, errUnexpectedTransport
+		return nil, ErrUnexpectedTransport
 	}
 
 	return t, nil
@@ -89,7 +85,10 @@ func (c *Client) raiseError(cause string, err error) {
 		return
 	}
 
-	c.Err = fmt.Errorf("sreq [%s]: %s", cause, err.Error())
+	c.Err = &ClientError{
+		Cause: cause,
+		Err:   err,
+	}
 }
 
 // Resolve resolves c and returns its raw HTTP client.
@@ -175,7 +174,7 @@ func SetProxy(proxy func(*http.Request) (*stdurl.URL, error)) *Client {
 func (c *Client) SetProxy(proxy func(*http.Request) (*stdurl.URL, error)) *Client {
 	t, err := c.httpTransport()
 	if err != nil {
-		c.raiseError("Client.SetProxy", err)
+		c.raiseError("SetProxy", err)
 		return c
 	}
 
@@ -193,7 +192,7 @@ func SetProxyFromURL(url string) *Client {
 func (c *Client) SetProxyFromURL(url string) *Client {
 	fixedURL, err := stdurl.Parse(url)
 	if err != nil {
-		c.raiseError("Client.SetProxyFromURL", err)
+		c.raiseError("SetProxyFromURL", err)
 		return c
 	}
 	return c.SetProxy(http.ProxyURL(fixedURL))
@@ -218,7 +217,7 @@ func SetTLSClientConfig(config *tls.Config) *Client {
 func (c *Client) SetTLSClientConfig(config *tls.Config) *Client {
 	t, err := c.httpTransport()
 	if err != nil {
-		c.raiseError("Client.SetTLSClientConfig", err)
+		c.raiseError("SetTLSClientConfig", err)
 		return c
 	}
 
@@ -236,7 +235,7 @@ func AppendClientCertificates(certs ...tls.Certificate) *Client {
 func (c *Client) AppendClientCertificates(certs ...tls.Certificate) *Client {
 	t, err := c.httpTransport()
 	if err != nil {
-		c.raiseError("Client.AppendClientCertificates", err)
+		c.raiseError("AppendClientCertificates", err)
 		return c
 	}
 
@@ -258,7 +257,7 @@ func AppendRootCAs(pemFilePath string) *Client {
 func (c *Client) AppendRootCAs(pemFilePath string) *Client {
 	t, err := c.httpTransport()
 	if err != nil {
-		c.raiseError("Client.AppendRootCAs", err)
+		c.raiseError("AppendRootCAs", err)
 		return c
 	}
 
@@ -271,7 +270,7 @@ func (c *Client) AppendRootCAs(pemFilePath string) *Client {
 
 	pemCerts, err := ioutil.ReadFile(pemFilePath)
 	if err != nil {
-		c.raiseError("Client.AppendRootCAs", err)
+		c.raiseError("AppendRootCAs", err)
 		return c
 	}
 
@@ -289,7 +288,7 @@ func DisableVerify() *Client {
 func (c *Client) DisableVerify() *Client {
 	t, err := c.httpTransport()
 	if err != nil {
-		c.raiseError("Client.DisableVerify", err)
+		c.raiseError("DisableVerify", err)
 		return c
 	}
 
@@ -313,7 +312,7 @@ func SetHost(host string) *Client {
 // The host will be applied to all requests raised from this client instance.
 // Also it can be overridden at request level host options.
 func (c *Client) SetHost(host string) *Client {
-	c.host = host
+	c.Host = host
 	return c
 }
 
@@ -328,12 +327,12 @@ func SetHeaders(headers Headers) *Client {
 // These headers will be applied to all requests raised from this client instance.
 // Also it can be overridden at request level headers options.
 func (c *Client) SetHeaders(headers Headers) *Client {
-	if c.headers == nil {
-		c.headers = make(Headers, len(headers))
+	if c.Headers == nil {
+		c.Headers = make(Headers, len(headers))
 	}
 
 	for k, v := range headers {
-		c.headers.Set(k, v)
+		c.Headers.Set(k, v)
 	}
 	return c
 }
@@ -349,7 +348,7 @@ func SetUserAgent(userAgent string) *Client {
 // The user agent will be applied to all requests raised from this client instance.
 // Also it can be overridden at request level user agent options.
 func (c *Client) SetUserAgent(userAgent string) *Client {
-	c.userAgent = userAgent
+	c.UserAgent = userAgent
 	return c
 }
 
@@ -362,7 +361,7 @@ func AppendCookies(cookies ...*http.Cookie) *Client {
 // AppendCookies appends cookies of the client.
 // These cookies will be applied to all requests raised from this client instance.
 func (c *Client) AppendCookies(cookies ...*http.Cookie) *Client {
-	c.cookies = append(c.cookies, cookies...)
+	c.Cookies = append(c.Cookies, cookies...)
 	return c
 }
 
@@ -411,7 +410,7 @@ func SetContext(ctx context.Context) *Client {
 // Also it can be overridden at request level context options.
 func (c *Client) SetContext(ctx context.Context) *Client {
 	if ctx == nil {
-		c.raiseError("Client.SetContext", errors.New("nil Context"))
+		c.raiseError("SetContext", ErrNilContext)
 		return c
 	}
 
@@ -524,7 +523,7 @@ func FilterCookies(url string) ([]*http.Cookie, error) {
 // FilterCookies returns the cookies to send in a request for the given URL.
 func (c *Client) FilterCookies(url string) ([]*http.Cookie, error) {
 	if c.RawClient.Jar == nil {
-		return nil, errors.New("sreq: nil cookie jar")
+		return nil, ErrNilCookieJar
 	}
 
 	u, err := stdurl.Parse(url)
@@ -533,7 +532,7 @@ func (c *Client) FilterCookies(url string) ([]*http.Cookie, error) {
 	}
 	cookies := c.RawClient.Jar.Cookies(u)
 	if len(cookies) == 0 {
-		return nil, errors.New("sreq: cookies for the given URL not present")
+		return nil, ErrJarCookiesNotPresent
 	}
 
 	return cookies, nil
@@ -557,7 +556,7 @@ func (c *Client) FilterCookie(url string, name string) (*http.Cookie, error) {
 		}
 	}
 
-	return nil, errors.New("sreq: named cookie for the given URL not present")
+	return nil, ErrJarNamedCookieNotPresent
 }
 
 // Do sends a request and returns its response.
@@ -591,9 +590,9 @@ func (c *Client) Do(req *Request) *Response {
 }
 
 func (c *Client) setHost(req *Request) {
-	host := c.host
-	if req.host != "" {
-		host = req.host
+	host := c.Host
+	if req.Host != "" {
+		host = req.Host
 	}
 
 	if host != "" {
@@ -602,32 +601,32 @@ func (c *Client) setHost(req *Request) {
 }
 
 func (c *Client) setHeaders(req *Request) {
-	for k, v := range c.headers {
+	for k, v := range c.Headers {
 		req.RawRequest.Header.Set(k, v)
 	}
 
-	for k, v := range req.headers {
+	for k, v := range req.Headers {
 		req.RawRequest.Header.Set(k, v)
 	}
 }
 
 func (c *Client) setUserAgent(req *Request) {
 	userAgent := "sreq " + Version
-	if req.userAgent != "" {
-		userAgent = req.userAgent
-	} else if c.userAgent != "" {
-		userAgent = c.userAgent
+	if req.UserAgent != "" {
+		userAgent = req.UserAgent
+	} else if c.UserAgent != "" {
+		userAgent = c.UserAgent
 	}
 
 	req.RawRequest.Header.Set("User-Agent", userAgent)
 }
 
 func (c *Client) appendCookies(req *Request) {
-	for _, c := range c.cookies {
+	for _, c := range c.Cookies {
 		req.RawRequest.AddCookie(c)
 	}
 
-	for _, c := range req.cookies {
+	for _, c := range req.Cookies {
 		req.RawRequest.AddCookie(c)
 	}
 }
