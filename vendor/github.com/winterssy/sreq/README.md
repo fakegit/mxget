@@ -31,7 +31,7 @@ go get -u github.com/winterssy/sreq
 import "github.com/winterssy/sreq"
 ```
 
-## Quick start
+## Quick Start
 
 The usages of `sreq` are very similar to `net/http` , you can switch from it to `sreq` easily. For example, if your HTTP request code like this:
 

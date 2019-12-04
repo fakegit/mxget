@@ -396,16 +396,18 @@ func (req *Request) SetTimeout(timeout time.Duration) *Request {
 }
 
 // SetRetry sets retry policy for the HTTP request.
-func (req *Request) SetRetry(attempts int, delay time.Duration, conditions ...func(*Response) bool) *Request {
+func (req *Request) SetRetry(attempts int, delay time.Duration, maxDuration time.Duration,
+	conditions ...func(*Response) bool) *Request {
 	if req.Err != nil {
 		return req
 	}
 
 	if attempts > 1 {
 		req.retry = &retry{
-			attempts:   attempts,
-			delay:      delay,
-			conditions: conditions,
+			attempts:    attempts,
+			delay:       delay,
+			maxDuration: maxDuration,
+			conditions:  conditions,
 		}
 	}
 	return req
@@ -531,9 +533,9 @@ func WithTimeout(timeout time.Duration) RequestOption {
 }
 
 // WithRetry sets retry policy for the HTTP request.
-func WithRetry(attempts int, delay time.Duration,
+func WithRetry(attempts int, delay time.Duration, maxDuration time.Duration,
 	conditions ...func(*Response) bool) RequestOption {
 	return func(req *Request) *Request {
-		return req.SetRetry(attempts, delay, conditions...)
+		return req.SetRetry(attempts, delay, maxDuration, conditions...)
 	}
 }
