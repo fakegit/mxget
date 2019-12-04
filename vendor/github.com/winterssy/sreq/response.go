@@ -75,7 +75,7 @@ func (resp *Response) Cookie(name string) (*http.Cookie, error) {
 		}
 	}
 
-	return nil, ErrResponseNameCookieNotPresent
+	return nil, ErrResponseNamedCookieNotPresent
 }
 
 // EnsureStatusOk ensures the HTTP response's status code must be 200.
