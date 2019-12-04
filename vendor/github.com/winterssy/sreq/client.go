@@ -32,7 +32,6 @@ type (
 		RawClient *http.Client
 		Host      string
 		Headers   Headers
-		UserAgent string
 		Cookies   []*http.Cookie
 		Err       error
 
@@ -67,6 +66,7 @@ func New() *Client {
 	}
 	client := &Client{
 		RawClient: rawClient,
+		Headers:   make(Headers),
 	}
 	return client
 }
@@ -81,18 +81,14 @@ func (c *Client) httpTransport() (*http.Transport, error) {
 }
 
 func (c *Client) raiseError(cause string, err error) {
-	if c.Err != nil {
-		return
-	}
-
 	c.Err = &ClientError{
 		Cause: cause,
 		Err:   err,
 	}
 }
 
-// Resolve resolves c and returns its raw HTTP client.
-func (c *Client) Resolve() (*http.Client, error) {
+// Raw returns the raw HTTP client.
+func (c *Client) Raw() (*http.Client, error) {
 	return c.RawClient, c.Err
 }
 
@@ -107,13 +103,13 @@ func (c *Client) SetTransport(transport http.RoundTripper) *Client {
 	return c
 }
 
-// SetRedirectPolicy sets policy of the HTTP client for handling redirects.
-func SetRedirectPolicy(policy func(req *http.Request, via []*http.Request) error) *Client {
-	return DefaultClient.SetRedirectPolicy(policy)
+// SetRedirect sets policy of the HTTP client for handling redirects.
+func SetRedirect(policy func(req *http.Request, via []*http.Request) error) *Client {
+	return DefaultClient.SetRedirect(policy)
 }
 
-// SetRedirectPolicy sets policy of the HTTP client for handling redirects.
-func (c *Client) SetRedirectPolicy(policy func(req *http.Request, via []*http.Request) error) *Client {
+// SetRedirect sets policy of the HTTP client for handling redirects.
+func (c *Client) SetRedirect(policy func(req *http.Request, via []*http.Request) error) *Client {
 	c.RawClient.CheckRedirect = policy
 	return c
 }
@@ -128,7 +124,7 @@ func (c *Client) DisableRedirect() *Client {
 	policy := func(req *http.Request, via []*http.Request) error {
 		return http.ErrUseLastResponse
 	}
-	return c.SetRedirectPolicy(policy)
+	return c.SetRedirect(policy)
 }
 
 // SetCookieJar sets cookie jar of the HTTP client.
@@ -172,6 +168,10 @@ func SetProxy(proxy func(*http.Request) (*stdurl.URL, error)) *Client {
 
 // SetProxy sets proxy of the HTTP client.
 func (c *Client) SetProxy(proxy func(*http.Request) (*stdurl.URL, error)) *Client {
+	if c.Err != nil {
+		return c
+	}
+
 	t, err := c.httpTransport()
 	if err != nil {
 		c.raiseError("SetProxy", err)
@@ -190,6 +190,10 @@ func SetProxyFromURL(url string) *Client {
 
 // SetProxyFromURL sets proxy of the HTTP client from a url.
 func (c *Client) SetProxyFromURL(url string) *Client {
+	if c.Err != nil {
+		return c
+	}
+
 	fixedURL, err := stdurl.Parse(url)
 	if err != nil {
 		c.raiseError("SetProxyFromURL", err)
@@ -215,6 +219,10 @@ func SetTLSClientConfig(config *tls.Config) *Client {
 
 // SetTLSClientConfig sets TLS configuration of the HTTP client.
 func (c *Client) SetTLSClientConfig(config *tls.Config) *Client {
+	if c.Err != nil {
+		return c
+	}
+
 	t, err := c.httpTransport()
 	if err != nil {
 		c.raiseError("SetTLSClientConfig", err)
@@ -233,6 +241,10 @@ func AppendClientCertificates(certs ...tls.Certificate) *Client {
 
 // AppendClientCertificates appends client certificates to the HTTP client.
 func (c *Client) AppendClientCertificates(certs ...tls.Certificate) *Client {
+	if c.Err != nil {
+		return c
+	}
+
 	t, err := c.httpTransport()
 	if err != nil {
 		c.raiseError("AppendClientCertificates", err)
@@ -255,6 +267,10 @@ func AppendRootCAs(pemFilePath string) *Client {
 
 // AppendRootCAs appends root certificate authorities to the HTTP client.
 func (c *Client) AppendRootCAs(pemFilePath string) *Client {
+	if c.Err != nil {
+		return c
+	}
+
 	t, err := c.httpTransport()
 	if err != nil {
 		c.raiseError("AppendRootCAs", err)
@@ -286,6 +302,10 @@ func DisableVerify() *Client {
 
 // DisableVerify makes the HTTP client not verify the server's TLS certificate.
 func (c *Client) DisableVerify() *Client {
+	if c.Err != nil {
+		return c
+	}
+
 	t, err := c.httpTransport()
 	if err != nil {
 		c.raiseError("DisableVerify", err)
@@ -327,10 +347,6 @@ func SetHeaders(headers Headers) *Client {
 // These headers will be applied to all requests raised from this client instance.
 // Also it can be overridden at request level headers options.
 func (c *Client) SetHeaders(headers Headers) *Client {
-	if c.Headers == nil {
-		c.Headers = make(Headers, len(headers))
-	}
-
 	for k, v := range headers {
 		c.Headers.Set(k, v)
 	}
@@ -348,7 +364,22 @@ func SetUserAgent(userAgent string) *Client {
 // The user agent will be applied to all requests raised from this client instance.
 // Also it can be overridden at request level user agent options.
 func (c *Client) SetUserAgent(userAgent string) *Client {
-	c.UserAgent = userAgent
+	c.Headers.Set("User-Agent", userAgent)
+	return c
+}
+
+// SetReferer sets Referer header value of the client.
+// The referer will be applied to all requests raised from this client instance.
+// Also it can be overridden at request level referer options.
+func SetReferer(referer string) *Client {
+	return DefaultClient.SetReferer(referer)
+}
+
+// SetReferer sets Referer header value of the client.
+// The referer will be applied to all requests raised from this client instance.
+// Also it can be overridden at request level referer options.
+func (c *Client) SetReferer(referer string) *Client {
+	c.Headers.Set("Referer", referer)
 	return c
 }
 
@@ -409,6 +440,10 @@ func SetContext(ctx context.Context) *Client {
 // The context will be applied to all requests raised from this client instance.
 // Also it can be overridden at request level context options.
 func (c *Client) SetContext(ctx context.Context) *Client {
+	if c.Err != nil {
+		return c
+	}
+
 	if ctx == nil {
 		c.raiseError("SetContext", ErrNilContext)
 		return c
@@ -418,18 +453,18 @@ func (c *Client) SetContext(ctx context.Context) *Client {
 	return c
 }
 
-// SetRetryPolicy sets retry policy of the client.
+// SetRetry sets retry policy of the client.
 // The retry policy will be applied to all requests raised from this client instance.
 // Also it can be overridden at request level retry policy options.
-func SetRetryPolicy(attempts int, delay time.Duration,
+func SetRetry(attempts int, delay time.Duration,
 	conditions ...func(*Response) bool) *Client {
-	return DefaultClient.SetRetryPolicy(attempts, delay, conditions...)
+	return DefaultClient.SetRetry(attempts, delay, conditions...)
 }
 
-// SetRetryPolicy sets retry policy of the client.
+// SetRetry sets retry policy of the client.
 // The retry policy will be applied to all requests raised from this client instance.
 // Also it can be overridden at request level retry policy options.
-func (c *Client) SetRetryPolicy(attempts int, delay time.Duration,
+func (c *Client) SetRetry(attempts int, delay time.Duration,
 	conditions ...func(*Response) bool) *Client {
 	if attempts > 1 {
 		c.retry = &retry{
@@ -508,7 +543,7 @@ func Send(method string, url string, opts ...RequestOption) *Response {
 
 // Send makes an HTTP request using a specified method.
 func (c *Client) Send(method string, url string, opts ...RequestOption) *Response {
-	req := NewRequest(method, url, nil)
+	req := NewRequest(method, url)
 	for _, opt := range opts {
 		req = opt(req)
 	}
@@ -580,7 +615,6 @@ func (c *Client) Do(req *Request) *Response {
 
 	c.setHost(req)
 	c.setHeaders(req)
-	c.setUserAgent(req)
 	c.setCookies(req)
 	c.setBasicAuth(req)
 	c.setBearerToken(req)
@@ -608,17 +642,6 @@ func (c *Client) setHeaders(req *Request) {
 	for k, v := range req.Headers {
 		req.RawRequest.Header.Set(k, v)
 	}
-}
-
-func (c *Client) setUserAgent(req *Request) {
-	userAgent := "sreq " + Version
-	if req.UserAgent != "" {
-		userAgent = req.UserAgent
-	} else if c.UserAgent != "" {
-		userAgent = c.UserAgent
-	}
-
-	req.RawRequest.Header.Set("User-Agent", userAgent)
 }
 
 func (c *Client) setCookies(req *Request) {
@@ -670,6 +693,14 @@ func (c *Client) setContext(req *Request) {
 }
 
 func (c *Client) doWithRetry(req *Request, resp *Response) {
+	ctx := req.RawRequest.Context()
+	var cancel context.CancelFunc
+	if req.Timeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, req.Timeout)
+		req.RawRequest = req.RawRequest.WithContext(ctx)
+		defer cancel()
+	}
+
 	if req.retry == nil && c.retry == nil {
 		resp.RawResponse, resp.Err = c.RawClient.Do(req.RawRequest)
 		return
@@ -680,7 +711,6 @@ func (c *Client) doWithRetry(req *Request, resp *Response) {
 		retry = c.retry
 	}
 
-	ctx := req.RawRequest.Context()
 	var err error
 	for i := retry.attempts; i > 0; i-- {
 		resp.RawResponse, resp.Err = c.RawClient.Do(req.RawRequest)

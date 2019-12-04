@@ -1,11 +1,12 @@
 # sreq
 
-A simple, user-friendly and concurrent safe HTTP request library for Go, 's' means simple.
+**[sreq](https://godoc.org/github.com/winterssy/sreq)** is a simple, user-friendly and concurrent safe HTTP request library for Go, inspired by Python **[requests](https://requests.readthedocs.io)**.
 
-[![Actions Status](https://github.com/winterssy/sreq/workflows/Test/badge.svg)](https://github.com/winterssy/sreq/actions) [![Mentioned in Awesome Go](https://awesome.re/mentioned-badge.svg)](https://github.com/avelino/awesome-go) [![codecov](https://codecov.io/gh/winterssy/sreq/branch/master/graph/badge.svg)](https://codecov.io/gh/winterssy/sreq) [![Go Report Card](https://goreportcard.com/badge/github.com/winterssy/sreq)](https://goreportcard.com/report/github.com/winterssy/sreq) [![GoDoc](https://godoc.org/github.com/winterssy/sreq?status.svg)](https://godoc.org/github.com/winterssy/sreq) [![License](https://img.shields.io/github/license/winterssy/sreq.svg)](LICENSE)
+[![Actions Status](https://img.shields.io/github/workflow/status/winterssy/sreq/Test/master?logo=appveyor)](https://github.com/winterssy/sreq/actions) [![codecov](https://codecov.io/gh/winterssy/sreq/branch/master/graph/badge.svg)](https://codecov.io/gh/winterssy/sreq) [![Go Report Card](https://goreportcard.com/badge/github.com/winterssy/sreq)](https://goreportcard.com/report/github.com/winterssy/sreq) [![GoDoc](https://godoc.org/github.com/winterssy/sreq?status.svg)](https://godoc.org/github.com/winterssy/sreq) [![License](https://img.shields.io/github/license/winterssy/sreq.svg)](LICENSE)
 
 ## Features
 
+- Requests-style APIs.
 - GET, POST, PUT, PATCH, DELETE, etc.
 - Easy set query params, headers and cookies.
 - Easy send form, JSON or files payload.
@@ -41,10 +42,10 @@ resp, err := http.Get("http://www.google.com")
 Use `sreq` you just need to change your code like this:
 
 ```go
-resp, err := sreq.Get("http://www.google.com").Resolve()
+resp, err := sreq.Get("http://www.google.com").Raw()
 ```
 
-You have two ways to access the APIs of `sreq` .
+You have two convenient ways to access the APIs of `sreq` .
 
 ```go
 const (
@@ -59,9 +60,9 @@ params := sreq.Params{
 
 client := sreq.New()
 
-// 1
+// Go-style
 req := sreq.
-	NewRequest("GET", url, nil).
+	NewRequest("GET", url).
 	SetQuery(params).
 	SetUserAgent(userAgent)
 err := client.
@@ -72,7 +73,7 @@ if err != nil {
     panic(err)
 }
 
-// 2 (Recommended)
+// Requests-style (Recommended)
 err = client.Get(url,
 	sreq.WithQuery(params),
 	sreq.WithUserAgent(userAgent),

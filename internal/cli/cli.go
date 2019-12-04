@@ -121,7 +121,7 @@ func writeTag(ctx context.Context, client provider.API, filePath string, song *a
 	if song.PicUrl != "" {
 		pic, err := client.Request(sreq.MethodGet, song.PicUrl,
 			sreq.WithContext(ctx),
-		).Raw()
+		).Content()
 		if err == nil {
 			picFrame := id3v2.PictureFrame{
 				Encoding:    id3v2.EncodingUTF8,

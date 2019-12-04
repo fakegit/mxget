@@ -311,7 +311,7 @@ func (a *API) patchSongsLyric(ctx context.Context, songs ...*Song) {
 			if s.LrcURL != "" {
 				lrcBytes, err := a.Request(sreq.MethodGet, s.LrcURL,
 					sreq.WithContext(ctx),
-				).Raw()
+				).Content()
 				if err == nil {
 					if utf8.Valid(lrcBytes) {
 						s.Lyric = string(lrcBytes)

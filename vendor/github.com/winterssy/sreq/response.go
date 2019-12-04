@@ -17,13 +17,13 @@ type (
 	}
 )
 
-// Resolve resolves resp and returns its raw HTTP response.
-func (resp *Response) Resolve() (*http.Response, error) {
+// Raw returns the raw HTTP response.
+func (resp *Response) Raw() (*http.Response, error) {
 	return resp.RawResponse, resp.Err
 }
 
-// Raw decodes the HTTP response body and returns its raw data.
-func (resp *Response) Raw() ([]byte, error) {
+// Content decodes the HTTP response body to bytes.
+func (resp *Response) Content() ([]byte, error) {
 	if resp.Err != nil {
 		return nil, resp.Err
 	}
@@ -34,7 +34,7 @@ func (resp *Response) Raw() ([]byte, error) {
 
 // Text decodes the HTTP response body and returns the text representation of its raw data.
 func (resp *Response) Text() (string, error) {
-	b, err := resp.Raw()
+	b, err := resp.Content()
 	return string(b), err
 }
 

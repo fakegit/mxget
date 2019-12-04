@@ -50,8 +50,8 @@ type (
 		RawRequest *http.Request
 		Host       string
 		Headers    Headers
-		UserAgent  string
 		Cookies    []*http.Cookie
+		Timeout    time.Duration
 		Err        error
 
 		auth        *auth
@@ -65,32 +65,91 @@ type (
 )
 
 func (req *Request) raiseError(cause string, err error) {
-	if req.Err != nil {
-		return
-	}
-
 	req.Err = &RequestError{
 		Cause: cause,
 		Err:   err,
 	}
 }
 
-// NewRequest returns a new Request given a method, URL and optional body.
-func NewRequest(method string, url string, body io.Reader) *Request {
-	req := new(Request)
-	rawRequest, err := http.NewRequest(method, url, body)
+// NewRequest returns a new Request given a method, URL.
+func NewRequest(method string, url string) *Request {
+	req := &Request{
+		Headers: make(Headers),
+	}
+
+	rawRequest, err := http.NewRequest(method, url, nil)
 	if err != nil {
 		req.raiseError("NewRequest", err)
 		return req
 	}
 
+	rawRequest.Header.Set("User-Agent", "sreq "+Version)
 	req.RawRequest = rawRequest
 	return req
 }
 
-// Resolve resolves req and returns its raw HTTP request.
-func (req *Request) Resolve() (*http.Request, error) {
+// Raw returns the raw HTTP request.
+func (req *Request) Raw() (*http.Request, error) {
 	return req.RawRequest, req.Err
+}
+
+// SetBody sets body for the HTTP request.
+func (req *Request) SetBody(body io.Reader) *Request {
+	if req.Err != nil {
+		return req
+	}
+
+	rc, ok := body.(io.ReadCloser)
+	if !ok && body != nil {
+		rc = ioutil.NopCloser(body)
+	}
+	req.RawRequest.Body = rc
+
+	if body != nil {
+		switch v := body.(type) {
+		case *bytes.Buffer:
+			req.RawRequest.ContentLength = int64(v.Len())
+			buf := v.Bytes()
+			req.RawRequest.GetBody = func() (io.ReadCloser, error) {
+				r := bytes.NewReader(buf)
+				return ioutil.NopCloser(r), nil
+			}
+		case *bytes.Reader:
+			req.RawRequest.ContentLength = int64(v.Len())
+			snapshot := *v
+			req.RawRequest.GetBody = func() (io.ReadCloser, error) {
+				r := snapshot
+				return ioutil.NopCloser(&r), nil
+			}
+		case *strings.Reader:
+			req.RawRequest.ContentLength = int64(v.Len())
+			snapshot := *v
+			req.RawRequest.GetBody = func() (io.ReadCloser, error) {
+				r := snapshot
+				return ioutil.NopCloser(&r), nil
+			}
+		default:
+			// This is where we'd set it to -1 (at least
+			// if body != NoBody) to mean unknown, but
+			// that broke people during the Go 1.8 testing
+			// period. People depend on it being 0 I
+			// guess. Maybe retry later. See Issue 18117.
+		}
+		// For client requests, Request.ContentLength of 0
+		// means either actually 0, or unknown. The only way
+		// to explicitly say that the ContentLength is zero is
+		// to set the Body to nil. But turns out too much code
+		// depends on NewRequest returning a non-nil Body,
+		// so we use a well-known ReadCloser variable instead
+		// and have the http package also treat that sentinel
+		// variable to mean explicitly zero.
+		if req.RawRequest.GetBody != nil && req.RawRequest.ContentLength == 0 {
+			req.RawRequest.Body = http.NoBody
+			req.RawRequest.GetBody = func() (io.ReadCloser, error) { return http.NoBody, nil }
+		}
+	}
+
+	return req
 }
 
 // SetHost specifies the host on which the URL is sought.
@@ -109,13 +168,19 @@ func (req *Request) SetHeaders(headers Headers) *Request {
 		return req
 	}
 
-	if req.Headers == nil {
-		req.Headers = make(Headers, len(headers))
-	}
-
 	for k, v := range headers {
 		req.Headers.Set(k, v)
 	}
+	return req
+}
+
+// SetContentType sets Content-Type header value for the HTTP request.
+func (req *Request) SetContentType(contentType string) *Request {
+	if req.Err != nil {
+		return req
+	}
+
+	req.Headers.Set("Content-Type", contentType)
 	return req
 }
 
@@ -125,7 +190,17 @@ func (req *Request) SetUserAgent(userAgent string) *Request {
 		return req
 	}
 
-	req.UserAgent = userAgent
+	req.Headers.Set("User-Agent", userAgent)
+	return req
+}
+
+// SetReferer sets Referer header value for the HTTP request.
+func (req *Request) SetReferer(referer string) *Request {
+	if req.Err != nil {
+		return req
+	}
+
+	req.Headers.Set("Referer", referer)
 	return req
 }
 
@@ -144,22 +219,14 @@ func (req *Request) SetQuery(params Params) *Request {
 	return req
 }
 
-// SetRaw sets raw bytes payload for the HTTP request.
-func (req *Request) SetRaw(raw []byte, contentType string) *Request {
+// SetContent sets bytes payload for the HTTP request.
+func (req *Request) SetContent(content []byte) *Request {
 	if req.Err != nil {
 		return req
 	}
 
-	r := bytes.NewBuffer(raw)
-	req.RawRequest.Body = ioutil.NopCloser(r)
-	req.RawRequest.ContentLength = int64(r.Len())
-	buf := r.Bytes()
-	req.RawRequest.GetBody = func() (io.ReadCloser, error) {
-		r := bytes.NewReader(buf)
-		return ioutil.NopCloser(r), nil
-	}
-
-	req.RawRequest.Header.Set("Content-Type", contentType)
+	r := bytes.NewBuffer(content)
+	req.SetBody(r)
 	return req
 }
 
@@ -170,15 +237,8 @@ func (req *Request) SetText(text string) *Request {
 	}
 
 	r := bytes.NewBufferString(text)
-	req.RawRequest.Body = ioutil.NopCloser(r)
-	req.RawRequest.ContentLength = int64(r.Len())
-	buf := r.Bytes()
-	req.RawRequest.GetBody = func() (io.ReadCloser, error) {
-		r := bytes.NewReader(buf)
-		return ioutil.NopCloser(r), nil
-	}
-
-	req.RawRequest.Header.Set("Content-Type", "text/plain; charset=utf-8")
+	req.SetBody(r)
+	req.SetContentType("text/plain; charset=utf8")
 	return req
 }
 
@@ -194,15 +254,8 @@ func (req *Request) SetForm(form Form) *Request {
 	}
 
 	r := strings.NewReader(data.Encode())
-	req.RawRequest.Body = ioutil.NopCloser(r)
-	req.RawRequest.ContentLength = int64(r.Len())
-	snapshot := *r
-	req.RawRequest.GetBody = func() (io.ReadCloser, error) {
-		r := snapshot
-		return ioutil.NopCloser(&r), nil
-	}
-
-	req.RawRequest.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetBody(r)
+	req.SetContentType("application/x-www-form-urlencoded")
 	return req
 }
 
@@ -219,15 +272,8 @@ func (req *Request) SetJSON(data JSON, escapeHTML bool) *Request {
 	}
 
 	r := bytes.NewReader(b)
-	req.RawRequest.Body = ioutil.NopCloser(r)
-	req.RawRequest.ContentLength = int64(r.Len())
-	snapshot := *r
-	req.RawRequest.GetBody = func() (io.ReadCloser, error) {
-		r := snapshot
-		return ioutil.NopCloser(&r), nil
-	}
-
-	req.RawRequest.Header.Set("Content-Type", "application/json")
+	req.SetBody(r)
+	req.SetContentType("application/json; charset=utf-8")
 	return req
 }
 
@@ -270,8 +316,8 @@ func (req *Request) SetFiles(files Files) *Request {
 		}
 	}()
 
-	req.RawRequest.Body = ioutil.NopCloser(pr)
-	req.RawRequest.Header.Set("Content-Type", mw.FormDataContentType())
+	req.SetBody(pr)
+	req.SetContentType(mw.FormDataContentType())
 	return req
 }
 
@@ -339,6 +385,16 @@ func (req *Request) SetContext(ctx context.Context) *Request {
 	return req
 }
 
+// SetTimeout sets timeout for the HTTP request.
+func (req *Request) SetTimeout(timeout time.Duration) *Request {
+	if req.Err != nil {
+		return req
+	}
+
+	req.Timeout = timeout
+	return req
+}
+
 // SetRetry sets retry policy for the HTTP request.
 func (req *Request) SetRetry(attempts int, delay time.Duration, conditions ...func(*Response) bool) *Request {
 	if req.Err != nil {
@@ -355,6 +411,13 @@ func (req *Request) SetRetry(attempts int, delay time.Duration, conditions ...fu
 	return req
 }
 
+// WithBody sets body for the HTTP request.
+func WithBody(body io.Reader) RequestOption {
+	return func(req *Request) *Request {
+		return req.SetBody(body)
+	}
+}
+
 // WithHost specifies the host on which the URL is sought.
 func WithHost(host string) RequestOption {
 	return func(req *Request) *Request {
@@ -369,10 +432,24 @@ func WithHeaders(headers Headers) RequestOption {
 	}
 }
 
+// WithContentType sets contentType header value for the HTTP request.
+func WithContentType(contentType string) RequestOption {
+	return func(req *Request) *Request {
+		return req.SetContentType(contentType)
+	}
+}
+
 // WithUserAgent sets User-Agent header value for the HTTP request.
 func WithUserAgent(userAgent string) RequestOption {
 	return func(req *Request) *Request {
 		return req.SetUserAgent(userAgent)
+	}
+}
+
+// WithReferer sets Referer header value for the HTTP request.
+func WithReferer(referer string) RequestOption {
+	return func(req *Request) *Request {
+		return req.SetReferer(referer)
 	}
 }
 
@@ -383,10 +460,10 @@ func WithQuery(params Params) RequestOption {
 	}
 }
 
-// WithRaw sets raw bytes payload for the HTTP request.
-func WithRaw(raw []byte, contentType string) RequestOption {
+// WithContent sets bytes payload for the HTTP request.
+func WithContent(content []byte) RequestOption {
 	return func(req *Request) *Request {
-		return req.SetRaw(raw, contentType)
+		return req.SetContent(content)
 	}
 }
 
@@ -443,6 +520,13 @@ func WithBearerToken(token string) RequestOption {
 func WithContext(ctx context.Context) RequestOption {
 	return func(req *Request) *Request {
 		return req.SetContext(ctx)
+	}
+}
+
+// WithTimeout sets timeout for the HTTP request.
+func WithTimeout(timeout time.Duration) RequestOption {
+	return func(req *Request) *Request {
+		return req.SetTimeout(timeout)
 	}
 }
 
