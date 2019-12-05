@@ -26,9 +26,6 @@ var (
 
 	// ErrResponseNamedCookieNotPresent can be used when named cookie of the HTTP response not present.
 	ErrResponseNamedCookieNotPresent = errors.New("sreq: named cookie not present")
-
-	// ErrRetryMaxDurationExceeded can be used when the retry max duration exceeded.
-	ErrRetryMaxDurationExceeded = errors.New("sreq: retry max duration exceeded")
 )
 
 type (
@@ -47,7 +44,7 @@ type (
 
 // Error implements error interface.
 func (c *ClientError) Error() string {
-	return fmt.Sprintf("sreq>>Client [%s]: %s", c.Cause, c.Err.Error())
+	return fmt.Sprintf("sreq [Client] [%s]: %s", c.Cause, c.Err.Error())
 }
 
 // Unwrap unpacks and returns the wrapped err of c.
@@ -57,7 +54,7 @@ func (c *ClientError) Unwrap() error {
 
 // Error implements error interface.
 func (req *RequestError) Error() string {
-	return fmt.Sprintf("sreq>>Request [%s]: %s", req.Cause, req.Err.Error())
+	return fmt.Sprintf("sreq [Request] [%s]: %s", req.Cause, req.Err.Error())
 }
 
 // Unwrap unpacks and returns the wrapped err of req.

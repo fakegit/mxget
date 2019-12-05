@@ -64,7 +64,7 @@ func ConcurrentDownload(ctx context.Context, client provider.API, savePath strin
 			err := client.
 				Request(sreq.MethodGet, s.Url,
 					sreq.WithContext(ctx),
-					sreq.WithRetry(3, 1*time.Second, 2*time.Minute),
+					sreq.WithRetry(3, 1*time.Second),
 				).
 				Save(mp3FilePath, 0664)
 			if err != nil {

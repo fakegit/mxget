@@ -152,7 +152,7 @@ func (req *Request) SetBody(body io.Reader) *Request {
 	return req
 }
 
-// SetHost specifies the host on which the URL is sought.
+// SetHost sets host for the HTTP request.
 func (req *Request) SetHost(host string) *Request {
 	if req.Err != nil {
 		return req
@@ -238,7 +238,7 @@ func (req *Request) SetText(text string) *Request {
 
 	r := bytes.NewBufferString(text)
 	req.SetBody(r)
-	req.SetContentType("text/plain; charset=utf8")
+	req.SetContentType("text/plain; charset=utf-8")
 	return req
 }
 
@@ -273,7 +273,7 @@ func (req *Request) SetJSON(data JSON, escapeHTML bool) *Request {
 
 	r := bytes.NewReader(b)
 	req.SetBody(r)
-	req.SetContentType("application/json; charset=utf-8")
+	req.SetContentType("application/json")
 	return req
 }
 
@@ -286,7 +286,7 @@ func (req *Request) SetFiles(files Files) *Request {
 	for fieldName, filePath := range files {
 		if _, err := existsFile(filePath); err != nil {
 			req.raiseError("SetFiles",
-				fmt.Errorf("file for %q not ready: %s", fieldName, err.Error()))
+				fmt.Errorf("file for [%s] not ready: %s", fieldName, err.Error()))
 			return req
 		}
 	}
@@ -396,7 +396,8 @@ func (req *Request) SetTimeout(timeout time.Duration) *Request {
 }
 
 // SetRetry sets retry policy for the HTTP request.
-func (req *Request) SetRetry(attempts int, delay time.Duration, maxDuration time.Duration,
+// Notes: Request timeout or context has priority over the retry policy.
+func (req *Request) SetRetry(attempts int, delay time.Duration,
 	conditions ...func(*Response) bool) *Request {
 	if req.Err != nil {
 		return req
@@ -404,10 +405,9 @@ func (req *Request) SetRetry(attempts int, delay time.Duration, maxDuration time
 
 	if attempts > 1 {
 		req.retry = &retry{
-			attempts:    attempts,
-			delay:       delay,
-			maxDuration: maxDuration,
-			conditions:  conditions,
+			attempts:   attempts,
+			delay:      delay,
+			conditions: conditions,
 		}
 	}
 	return req
@@ -420,7 +420,7 @@ func WithBody(body io.Reader) RequestOption {
 	}
 }
 
-// WithHost specifies the host on which the URL is sought.
+// WithHost sets host for the HTTP request.
 func WithHost(host string) RequestOption {
 	return func(req *Request) *Request {
 		return req.SetHost(host)
@@ -533,9 +533,10 @@ func WithTimeout(timeout time.Duration) RequestOption {
 }
 
 // WithRetry sets retry policy for the HTTP request.
-func WithRetry(attempts int, delay time.Duration, maxDuration time.Duration,
+// Notes: Request timeout or context has priority over the retry policy.
+func WithRetry(attempts int, delay time.Duration,
 	conditions ...func(*Response) bool) RequestOption {
 	return func(req *Request) *Request {
-		return req.SetRetry(attempts, delay, maxDuration, conditions...)
+		return req.SetRetry(attempts, delay, conditions...)
 	}
 }
