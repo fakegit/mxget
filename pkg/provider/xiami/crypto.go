@@ -4,6 +4,7 @@ import (
 	"crypto/md5"
 	"encoding/json"
 	"fmt"
+	"github.com/winterssy/sreq"
 	"time"
 )
 
@@ -18,7 +19,7 @@ var (
 	}
 )
 
-func signPayload(token string, model interface{}) map[string]string {
+func signPayload(token string, model interface{}) sreq.Params {
 	payload := map[string]interface{}{
 		"header": reqHeader,
 		"model":  model,
@@ -34,7 +35,7 @@ func signPayload(token string, model interface{}) map[string]string {
 	signStr := fmt.Sprintf("%s&%s&%s&%s", token, t, APPKey, dataStr)
 	sign := fmt.Sprintf("%x", md5.Sum([]byte(signStr)))
 
-	return map[string]string{
+	return sreq.Params{
 		"t":    t,
 		"sign": sign,
 		"data": dataStr,

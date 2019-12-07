@@ -206,7 +206,7 @@ type (
 
 func New(client *sreq.Client) *API {
 	if client == nil {
-		client = sreq.New().SetUserAgent(request.UserAgent)
+		client = sreq.New().UseRequestInterceptors(request.SetUserAgent)
 	}
 	return &API{
 		Client: client,

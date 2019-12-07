@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/winterssy/sreq"
+
 	"github.com/winterssy/mxget/pkg/cryptography"
 )
 
@@ -24,31 +26,31 @@ const (
 	DefaultRSAPublicKeyExponent = 0x10001
 )
 
-func weapi(origData interface{}) map[string]string {
+func weapi(origData interface{}) sreq.Form {
 	plainText, _ := json.Marshal(origData)
 	params := base64.StdEncoding.EncodeToString(cryptography.AESCBCEncrypt(plainText, []byte(PresetKey), []byte(IV)))
 	secKey := CreateSecretKey(16, Base62)
 	params = base64.StdEncoding.EncodeToString(cryptography.AESCBCEncrypt([]byte(params), secKey, []byte(IV)))
-	return map[string]string{
+	return sreq.Form{
 		"params":    params,
 		"encSecKey": cryptography.RSAEncrypt(BytesReverse(secKey), DefaultRSAPublicKeyModulus, DefaultRSAPublicKeyExponent),
 	}
 }
 
-func linuxapi(origData interface{}) map[string]string {
+func linuxapi(origData interface{}) sreq.Form {
 	plainText, _ := json.Marshal(origData)
-	return map[string]string{
+	return sreq.Form{
 		"eparams": strings.ToUpper(hex.EncodeToString(cryptography.AESECBEncrypt(plainText, []byte(LinuxAPIKey)))),
 	}
 }
 
-func eapi(url string, origData interface{}) map[string]string {
+func eapi(url string, origData interface{}) sreq.Form {
 	plainText, _ := json.Marshal(origData)
 	text := string(plainText)
 	message := fmt.Sprintf("nobody%suse%smd5forencrypt", url, text)
 	digest := fmt.Sprintf("%x", md5.Sum([]byte(message)))
 	data := fmt.Sprintf("%s-36cd479b6b5-%s-36cd479b6b5-%s", url, text, digest)
-	return map[string]string{
+	return sreq.Form{
 		"params": strings.ToUpper(hex.EncodeToString(cryptography.AESECBEncrypt([]byte(data), []byte(EAPIKey)))),
 	}
 }
