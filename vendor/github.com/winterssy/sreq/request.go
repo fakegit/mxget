@@ -1,16 +1,18 @@
 package sreq
 
 import (
+	"bufio"
 	"bytes"
 	"context"
+	"encoding/base64"
+	"encoding/xml"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	stdurl "net/url"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 )
@@ -48,20 +50,18 @@ type (
 	// Request wraps the raw HTTP request.
 	Request struct {
 		RawRequest *http.Request
-		Host       string
-		Headers    Headers
-		Cookies    []*http.Cookie
-		Timeout    time.Duration
 		Err        error
 
-		auth        *auth
-		bearerToken string
-		ctx         context.Context
-		retry       *retry
+		timeout       time.Duration
+		retry         *retry
+		errBackground chan error
 	}
 
-	// RequestOption specifies the request options, like params, form, etc.
+	// RequestOption specifies a request options, like params, form, etc.
 	RequestOption func(*Request) *Request
+
+	// RequestInterceptor specifies a request interceptor.
+	RequestInterceptor func(*Request) error
 )
 
 func (req *Request) raiseError(cause string, err error) {
@@ -73,17 +73,14 @@ func (req *Request) raiseError(cause string, err error) {
 
 // NewRequest returns a new Request given a method, URL.
 func NewRequest(method string, url string) *Request {
-	req := &Request{
-		Headers: make(Headers),
-	}
-
+	req := new(Request)
 	rawRequest, err := http.NewRequest(method, url, nil)
 	if err != nil {
 		req.raiseError("NewRequest", err)
 		return req
 	}
 
-	rawRequest.Header.Set("User-Agent", "sreq "+Version)
+	rawRequest.Header.Set("User-Agent", defaultUserAgent)
 	req.RawRequest = rawRequest
 	return req
 }
@@ -158,19 +155,22 @@ func (req *Request) SetHost(host string) *Request {
 		return req
 	}
 
-	req.Host = host
+	req.RawRequest.Host = host
 	return req
 }
 
 // SetHeaders sets headers for the HTTP request.
-func (req *Request) SetHeaders(headers Headers) *Request {
+func (req *Request) SetHeaders(headers KV) *Request {
 	if req.Err != nil {
 		return req
 	}
 
-	for k, v := range headers {
-		req.Headers.Set(k, v)
+	for _, k := range headers.Keys() {
+		for _, v := range headers.Get(k) {
+			req.RawRequest.Header.Add(k, v)
+		}
 	}
+
 	return req
 }
 
@@ -180,7 +180,7 @@ func (req *Request) SetContentType(contentType string) *Request {
 		return req
 	}
 
-	req.Headers.Set("Content-Type", contentType)
+	req.RawRequest.Header.Set("Content-Type", contentType)
 	return req
 }
 
@@ -190,7 +190,7 @@ func (req *Request) SetUserAgent(userAgent string) *Request {
 		return req
 	}
 
-	req.Headers.Set("User-Agent", userAgent)
+	req.RawRequest.Header.Set("User-Agent", userAgent)
 	return req
 }
 
@@ -200,19 +200,21 @@ func (req *Request) SetReferer(referer string) *Request {
 		return req
 	}
 
-	req.Headers.Set("Referer", referer)
+	req.RawRequest.Header.Set("Referer", referer)
 	return req
 }
 
 // SetQuery sets query params for the HTTP request.
-func (req *Request) SetQuery(params Params) *Request {
+func (req *Request) SetQuery(params KV) *Request {
 	if req.Err != nil {
 		return req
 	}
 
 	query := req.RawRequest.URL.Query()
-	for k, v := range params {
-		query.Set(k, v)
+	for _, k := range params.Keys() {
+		for _, v := range params.Get(k) {
+			query.Add(k, v)
+		}
 	}
 
 	req.RawRequest.URL.RawQuery = query.Encode()
@@ -243,14 +245,17 @@ func (req *Request) SetText(text string) *Request {
 }
 
 // SetForm sets form payload for the HTTP request.
-func (req *Request) SetForm(form Form) *Request {
+func (req *Request) SetForm(form KV) *Request {
 	if req.Err != nil {
 		return req
 	}
 
-	data := stdurl.Values{}
-	for k, v := range form {
-		data.Set(k, v)
+	keys := form.Keys()
+	data := make(stdurl.Values, len(keys))
+	for _, k := range keys {
+		for _, v := range form.Get(k) {
+			data.Add(k, v)
+		}
 	}
 
 	r := strings.NewReader(data.Encode())
@@ -259,8 +264,8 @@ func (req *Request) SetForm(form Form) *Request {
 	return req
 }
 
-// SetJSON sets json payload for the HTTP request.
-func (req *Request) SetJSON(data JSON, escapeHTML bool) *Request {
+// SetJSON sets JSON payload for the HTTP request.
+func (req *Request) SetJSON(data interface{}, escapeHTML bool) *Request {
 	if req.Err != nil {
 		return req
 	}
@@ -277,19 +282,89 @@ func (req *Request) SetJSON(data JSON, escapeHTML bool) *Request {
 	return req
 }
 
-// SetFiles sets files payload for the HTTP request.
-func (req *Request) SetFiles(files Files) *Request {
+// SetXML sets XML payload for the HTTP request.
+func (req *Request) SetXML(data interface{}) *Request {
 	if req.Err != nil {
 		return req
 	}
 
-	for fieldName, filePath := range files {
-		if _, err := existsFile(filePath); err != nil {
-			req.raiseError("SetFiles",
-				fmt.Errorf("file for [%s] not ready: %s", fieldName, err.Error()))
-			return req
+	b, err := xml.Marshal(data)
+	if err != nil {
+		req.raiseError("SetXML", err)
+		return req
+	}
+
+	r := bytes.NewReader(b)
+	req.SetBody(r)
+	req.SetContentType("application/xml")
+	return req
+}
+
+var quoteEscaper = strings.NewReplacer("\\", "\\\\", `"`, "\\\"")
+
+func escapeQuotes(s string) string {
+	return quoteEscaper.Replace(s)
+}
+
+func setFiles(mw *multipart.Writer, files Files) error {
+	const (
+		fileFormat = `form-data; name="%s"; filename="%s"`
+	)
+
+	var (
+		part io.Writer
+		err  error
+	)
+	for k, v := range files {
+		filename := v.Filename
+		if filename == "" {
+			return fmt.Errorf("filename of [%s] not specified", k)
+		}
+
+		r := bufio.NewReader(v)
+		cType := v.MIME
+		if cType == "" {
+			data, _ := r.Peek(512)
+			cType = http.DetectContentType(data)
+		}
+
+		h := make(textproto.MIMEHeader)
+		h.Set("Content-Disposition",
+			fmt.Sprintf(fileFormat, escapeQuotes(k), escapeQuotes(filename)))
+		h.Set("Content-Type", cType)
+		part, err = mw.CreatePart(h)
+		if err != nil {
+			return err
+		}
+
+		_, err = io.Copy(part, r)
+		if err != nil {
+			return err
+		}
+
+		v.Close()
+	}
+
+	return nil
+}
+
+func setForm(mw *multipart.Writer, form KV) {
+	for _, k := range form.Keys() {
+		for _, v := range form.Get(k) {
+			mw.WriteField(k, v)
 		}
 	}
+}
+
+// SetMultipart sets multipart payload for the HTTP request.
+func (req *Request) SetMultipart(files Files, form KV) *Request {
+	if req.Err != nil {
+		return req
+	}
+
+	req.errBackground = make(chan error, 1)
+	ctx, cancel := context.WithCancel(req.RawRequest.Context())
+	req.RawRequest = req.RawRequest.WithContext(ctx)
 
 	pr, pw := io.Pipe()
 	mw := multipart.NewWriter(pw)
@@ -297,44 +372,22 @@ func (req *Request) SetFiles(files Files) *Request {
 		defer pw.Close()
 		defer mw.Close()
 
-		for fieldName, filePath := range files {
-			fileName := filepath.Base(filePath)
-			part, err := mw.CreateFormFile(fieldName, fileName)
-			if err != nil {
-				return
+		err := setFiles(mw, files)
+		if err != nil {
+			req.errBackground <- &RequestError{
+				Cause: "SetMultipart",
+				Err:   err,
 			}
-
-			file, err := os.Open(filePath)
-			if err != nil {
-				return
-			}
-
-			_, err = io.Copy(part, file)
-			if err != nil || file.Close() != nil {
-				return
-			}
+			cancel()
+			return
 		}
+
+		setForm(mw, form)
 	}()
 
 	req.SetBody(pr)
 	req.SetContentType(mw.FormDataContentType())
 	return req
-}
-
-func existsFile(filename string) (bool, error) {
-	fi, err := os.Stat(filename)
-	if err == nil {
-		if fi.Mode().IsDir() {
-			return false, fmt.Errorf("%q is a directory", filename)
-		}
-		return true, nil
-	}
-
-	if os.IsNotExist(err) {
-		return false, err
-	}
-
-	return true, err
 }
 
 // SetCookies sets cookies for the HTTP request.
@@ -343,8 +396,15 @@ func (req *Request) SetCookies(cookies ...*http.Cookie) *Request {
 		return req
 	}
 
-	req.Cookies = append(req.Cookies, cookies...)
+	for _, c := range cookies {
+		req.RawRequest.AddCookie(c)
+	}
 	return req
+}
+
+func basicAuth(username, password string) string {
+	auth := username + ":" + password
+	return base64.StdEncoding.EncodeToString([]byte(auth))
 }
 
 // SetBasicAuth sets basic authentication for the HTTP request.
@@ -353,10 +413,7 @@ func (req *Request) SetBasicAuth(username string, password string) *Request {
 		return req
 	}
 
-	req.auth = &auth{
-		username: username,
-		password: password,
-	}
+	req.RawRequest.Header.Set("Authorization", "Basic "+basicAuth(username, password))
 	return req
 }
 
@@ -366,7 +423,7 @@ func (req *Request) SetBearerToken(token string) *Request {
 		return req
 	}
 
-	req.bearerToken = token
+	req.RawRequest.Header.Set("Authorization", "Bearer "+token)
 	return req
 }
 
@@ -381,7 +438,7 @@ func (req *Request) SetContext(ctx context.Context) *Request {
 		return req
 	}
 
-	req.ctx = ctx
+	req.RawRequest = req.RawRequest.WithContext(ctx)
 	return req
 }
 
@@ -391,7 +448,7 @@ func (req *Request) SetTimeout(timeout time.Duration) *Request {
 		return req
 	}
 
-	req.Timeout = timeout
+	req.timeout = timeout
 	return req
 }
 
@@ -428,13 +485,13 @@ func WithHost(host string) RequestOption {
 }
 
 // WithHeaders sets headers for the HTTP request.
-func WithHeaders(headers Headers) RequestOption {
+func WithHeaders(headers KV) RequestOption {
 	return func(req *Request) *Request {
 		return req.SetHeaders(headers)
 	}
 }
 
-// WithContentType sets contentType header value for the HTTP request.
+// WithContentType sets Content-Type header value for the HTTP request.
 func WithContentType(contentType string) RequestOption {
 	return func(req *Request) *Request {
 		return req.SetContentType(contentType)
@@ -456,7 +513,7 @@ func WithReferer(referer string) RequestOption {
 }
 
 // WithQuery sets query params for the HTTP request.
-func WithQuery(params Params) RequestOption {
+func WithQuery(params KV) RequestOption {
 	return func(req *Request) *Request {
 		return req.SetQuery(params)
 	}
@@ -477,23 +534,30 @@ func WithText(text string) RequestOption {
 }
 
 // WithForm sets form payload for the HTTP request.
-func WithForm(form Form) RequestOption {
+func WithForm(form KV) RequestOption {
 	return func(req *Request) *Request {
 		return req.SetForm(form)
 	}
 }
 
-// WithJSON sets json payload for the HTTP request.
-func WithJSON(data JSON, escapeHTML bool) RequestOption {
+// WithJSON sets JSON payload for the HTTP request.
+func WithJSON(data interface{}, escapeHTML bool) RequestOption {
 	return func(req *Request) *Request {
 		return req.SetJSON(data, escapeHTML)
 	}
 }
 
-// WithFiles sets files payload for the HTTP request.
-func WithFiles(files Files) RequestOption {
+// WithXML sets XML payload for the HTTP request.
+func WithXML(data interface{}) RequestOption {
 	return func(req *Request) *Request {
-		return req.SetFiles(files)
+		return req.SetXML(data)
+	}
+}
+
+// WithMultipart sets multipart payload for the HTTP request.
+func WithMultipart(files Files, form KV) RequestOption {
+	return func(req *Request) *Request {
+		return req.SetMultipart(files, form)
 	}
 }
 

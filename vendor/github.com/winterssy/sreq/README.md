@@ -9,12 +9,13 @@
 - Requests-style APIs.
 - GET, POST, PUT, PATCH, DELETE, etc.
 - Easy set query params, headers and cookies.
-- Easy send form, JSON or files payload.
+- Easy send form, JSON or multipart payload.
 - Easy set basic authentication or bearer token.
 - Easy set proxy.
 - Easy set context.
-- Retry policy support.
+- Retry policy.
 - Automatic cookies management.
+- Request and response interceptors.
 - Easy decode responses, raw data, text representation and unmarshal the JSON-encoded data.
 - Friendly debugging.
 - Concurrent safe.
@@ -23,6 +24,9 @@
 
 ```sh
 go get -u github.com/winterssy/sreq
+
+# Go Modules only
+go get -u github.com/winterssy/sreq@master
 ```
 
 ## Usage
@@ -74,10 +78,11 @@ if err != nil {
 }
 
 // Requests-style (Recommended)
-err = client.Get(url,
-	sreq.WithQuery(params),
-	sreq.WithUserAgent(userAgent),
-).
+err = client.
+	Get(url,
+		sreq.WithQuery(params),
+		sreq.WithUserAgent(userAgent),
+	).
 	EnsureStatusOk().
 	Verbose(os.Stdout)
 if err != nil {
@@ -116,8 +121,8 @@ if err != nil {
 // }
 ```
 
-[Code examples](examples)
+**[Code examples](examples)**
 
 ## License
 
-[MIT](LICENSE)
+**[MIT](LICENSE)**
