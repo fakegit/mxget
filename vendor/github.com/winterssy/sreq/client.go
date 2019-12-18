@@ -472,12 +472,8 @@ func (c *Client) FilterCookies(url string) ([]*http.Cookie, error) {
 	if err != nil {
 		return nil, err
 	}
-	cookies := c.RawClient.Jar.Cookies(u)
-	if len(cookies) == 0 {
-		return nil, ErrJarCookiesNotPresent
-	}
 
-	return cookies, nil
+	return c.RawClient.Jar.Cookies(u), nil
 }
 
 // FilterCookie returns the named cookie to send in a request for the given URL.
@@ -557,6 +553,15 @@ var defaultRetry = &retry{
 }
 
 func (c *Client) doWithRetry(req *Request, resp *Response) {
+	retry := defaultRetry
+	if req.retry != nil {
+		retry = req.retry
+	} else if c.retry != nil {
+		retry = c.retry
+	}
+
+	allowRetry := req.RawRequest.Body == nil
+
 	ctx := req.RawRequest.Context()
 	var cancel context.CancelFunc
 	if req.timeout > 0 {
@@ -565,15 +570,12 @@ func (c *Client) doWithRetry(req *Request, resp *Response) {
 		defer cancel()
 	}
 
-	retry := defaultRetry
-	if req.retry != nil {
-		retry = req.retry
-	} else if c.retry != nil {
-		retry = c.retry
-	}
-
 	var err error
 	for i := 0; i < retry.attempts; i++ {
+		if req.getBody != nil {
+			req.SetBody(req.getBody())
+		}
+
 		resp.RawResponse, resp.Err = c.do(req.RawRequest)
 		if err = ctx.Err(); err != nil {
 			select {
@@ -581,6 +583,10 @@ func (c *Client) doWithRetry(req *Request, resp *Response) {
 			default:
 			}
 			resp.Err = err
+			return
+		}
+
+		if !allowRetry {
 			return
 		}
 

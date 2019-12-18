@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"sort"
@@ -16,7 +15,7 @@ import (
 
 const (
 	// Version of sreq.
-	Version = "0.7.0"
+	Version = "0.7.7"
 
 	defaultUserAgent = "go-sreq/" + Version
 )
@@ -429,14 +428,11 @@ func (f *File) Read(p []byte) (int, error) {
 
 // Close implements Closer interface.
 func (f *File) Close() error {
-	if f.Body == nil {
+	rc, ok := f.Body.(io.Closer)
+	if !ok || rc == nil {
 		return nil
 	}
 
-	rc, ok := f.Body.(io.ReadCloser)
-	if !ok {
-		rc = ioutil.NopCloser(f.Body)
-	}
 	return rc.Close()
 }
 
