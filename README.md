@@ -4,8 +4,7 @@
 
 > Python版：**[pymxget](https://github.com/winterssy/pymxget)**
 
-[![Actions Status](https://github.com/winterssy/mxget/workflows/Build/badge.svg)](https://github.com/winterssy/mxget/actions)
-[![Actions Status](https://github.com/winterssy/mxget/workflows/Publish%20Docker/badge.svg)](https://github.com/winterssy/mxget/actions)
+[![Actions Status](https://img.shields.io/github/workflow/status/winterssy/mxget/Build/master?logo=appveyor)](https://github.com/winterssy/mxget/actions)
 
 ## 功能特性
 
@@ -35,7 +34,8 @@
 
 ## 下载安装
 
-```
+```sh
+# Go1.13+
 go get -u github.com/winterssy/mxget
 ```
 
