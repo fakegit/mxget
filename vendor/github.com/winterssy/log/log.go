@@ -9,12 +9,9 @@ import (
 	"time"
 )
 
-// OutputLevel specifies a log output level.
-type OutputLevel int
-
 // Log output level.
 const (
-	Ldebug OutputLevel = iota
+	Ldebug = iota
 	Linfo
 	Lwarn
 	Lerror
@@ -56,19 +53,19 @@ const (
 // the Writer's Write method. A Logger can be used simultaneously from
 // multiple goroutines; it guarantees to serialize access to the Writer.
 type Logger struct {
-	mu     sync.Mutex  // ensures atomic writes; protects the following fields
-	prefix string      // prefix to write at beginning of each line
-	flag   int         // properties
-	level  OutputLevel // output level
-	out    io.Writer   // destination for output
-	buf    []byte      // for accumulating text to write
+	mu     sync.Mutex // ensures atomic writes; protects the following fields
+	prefix string     // prefix to write at beginning of each line
+	flag   int        // properties
+	level  int        // output level
+	out    io.Writer  // destination for output
+	buf    []byte     // for accumulating text to write
 }
 
 // New creates a new Logger. The out variable sets the
 // destination to which log data will be written.
 // The prefix appears at the beginning of each generated log line.
 // The flag argument defines the logging properties.
-func New(out io.Writer, prefix string, flag int, level OutputLevel) *Logger {
+func New(out io.Writer, prefix string, flag int, level int) *Logger {
 	return &Logger{out: out, prefix: prefix, flag: flag, level: level}
 }
 
@@ -102,7 +99,7 @@ func itoa(buf *[]byte, i int, wid int) {
 //   * l.prefix (if it's not blank),
 //   * date and/or time (if corresponding flags are provided),
 //   * file and line number (if corresponding flags are provided).
-func (l *Logger) formatHeader(buf *[]byte, t time.Time, file string, line int, level OutputLevel) {
+func (l *Logger) formatHeader(buf *[]byte, t time.Time, file string, line int, level int) {
 	*buf = append(*buf, l.prefix...)
 	if l.flag&(Ldate|Ltime|Lmilliseconds) != 0 {
 		if l.flag&LUTC != 0 {
@@ -161,7 +158,7 @@ func (l *Logger) formatHeader(buf *[]byte, t time.Time, file string, line int, l
 // already a newline. Calldepth is used to recover the PC and is
 // provided for generality, although at the moment on all pre-defined
 // paths it will be 2.
-func (l *Logger) Output(calldepth int, s string, level OutputLevel) error {
+func (l *Logger) Output(calldepth int, s string, level int) error {
 	if level < l.level {
 		return nil
 	}
@@ -286,14 +283,14 @@ func (l *Logger) SetPrefix(prefix string) {
 }
 
 // Level returns the output level for the logger.
-func (l *Logger) Level() OutputLevel {
+func (l *Logger) Level() int {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return l.level
 }
 
 // SetLevel sets the output level for the logger.
-func (l *Logger) SetLevel(level OutputLevel) {
+func (l *Logger) SetLevel(level int) {
 	if level < Ldebug {
 		level = Ldebug
 	}
@@ -340,12 +337,12 @@ func SetPrefix(prefix string) {
 }
 
 // Level returns the output level for the standard logger.
-func Level() OutputLevel {
+func Level() int {
 	return std.Level()
 }
 
 // SetLevel sets the output level for the standard logger.
-func SetLevel(level OutputLevel) {
+func SetLevel(level int) {
 	std.SetLevel(level)
 }
 
@@ -424,6 +421,6 @@ func Fatalf(format string, v ...interface{}) {
 // frames to skip when computing the file name and line number
 // if Llongfile or Lshortfile is set; a value of 1 will print the details
 // for the caller of Output.
-func Output(calldepth int, s string, level OutputLevel) error {
+func Output(calldepth int, s string, level int) error {
 	return std.Output(calldepth+1, s, level) // +1 for this frame.
 }

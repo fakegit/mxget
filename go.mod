@@ -9,7 +9,7 @@ require (
 	github.com/grpc-ecosystem/grpc-gateway v1.12.1
 	github.com/spf13/cobra v0.0.5
 	github.com/spf13/pflag v1.0.5 // indirect
-	github.com/winterssy/log v0.0.0-20191226034814-c7e297d61c77
+	github.com/winterssy/log v0.0.0-20191226040901-df35fcd38ce9
 	github.com/winterssy/sreq v0.7.10
 	golang.org/x/net v0.0.0-20191209160850-c0dbc17a3553 // indirect
 	golang.org/x/sys v0.0.0-20191204072324-ce4227a45e2e // indirect
