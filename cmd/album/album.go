@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
-	"github.com/winterssy/easylog"
+	"github.com/winterssy/log"
 	"github.com/winterssy/mxget/internal/cli"
 	"github.com/winterssy/mxget/internal/settings"
 	"github.com/winterssy/mxget/pkg/provider"
@@ -35,14 +35,14 @@ func Run(cmd *cobra.Command, args []string) {
 
 	client, err := provider.GetClient(platform)
 	if err != nil {
-		easylog.Fatal(err)
+		log.Fatal(err)
 	}
 
-	easylog.Infof("Fetch album [%s] from [%s]", albumId, provider.GetDesc(platform))
+	log.Infof("Fetch album [%s] from [%s]", albumId, provider.GetDesc(platform))
 	ctx := context.Background()
 	album, err := client.GetAlbum(ctx, albumId)
 	if err != nil {
-		easylog.Fatal(err)
+		log.Fatal(err)
 	}
 
 	cli.ConcurrentDownload(ctx, client, album.Name, album.Songs...)

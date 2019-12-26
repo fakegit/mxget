@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/winterssy/easylog"
+	"github.com/winterssy/log"
 	"github.com/winterssy/mxget/pkg/provider"
 )
 
@@ -39,7 +39,7 @@ func Init() {
 	err := Cfg.setup()
 	if err != nil {
 		_ = Cfg.Save()
-		easylog.Fatalf("Initialize config failed, reset to defaults: %v", err)
+		log.Fatalf("Initialize config failed, reset to defaults: %v", err)
 	}
 }
 

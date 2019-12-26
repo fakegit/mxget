@@ -324,6 +324,32 @@ func (c *Client) DisableVerify() *Client {
 	return c
 }
 
+// SetCookies sets cookies to cookie jar for the given URL.
+func SetCookies(url string, cookies ...*http.Cookie) *Client {
+	return DefaultClient.SetCookies(url, cookies...)
+}
+
+// SetCookies sets cookies to cookie jar for the given URL.
+func (c *Client) SetCookies(url string, cookies ...*http.Cookie) *Client {
+	if c.Err != nil {
+		return c
+	}
+
+	if c.RawClient.Jar == nil {
+		c.raiseError("SetCookies", ErrNilCookieJar)
+		return c
+	}
+
+	u, err := stdurl.Parse(url)
+	if err != nil {
+		c.raiseError("SetCookies", err)
+		return c
+	}
+
+	c.RawClient.Jar.SetCookies(u, cookies)
+	return c
+}
+
 // SetRetry sets retry policy of the client.
 // The retry policy will be applied to all requests raised from this client instance.
 // Also it can be overridden at request level retry policy options.
@@ -465,7 +491,10 @@ func FilterCookies(url string) ([]*http.Cookie, error) {
 // FilterCookies returns the cookies to send in a request for the given URL.
 func (c *Client) FilterCookies(url string) ([]*http.Cookie, error) {
 	if c.RawClient.Jar == nil {
-		return nil, ErrNilCookieJar
+		return nil, &ClientError{
+			Cause: "FilterCookies",
+			Err:   ErrNilCookieJar,
+		}
 	}
 
 	u, err := stdurl.Parse(url)
@@ -494,7 +523,7 @@ func (c *Client) FilterCookie(url string, name string) (*http.Cookie, error) {
 		}
 	}
 
-	return nil, ErrJarNamedCookieNotPresent
+	return nil, ErrJarNoCookie
 }
 
 // Do sends a request and returns its response.

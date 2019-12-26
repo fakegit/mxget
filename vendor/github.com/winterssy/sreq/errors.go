@@ -10,16 +10,16 @@ var (
 	ErrUnexpectedTransport = errors.New("current transport isn't a non-nil *http.Transport instance")
 
 	// ErrNilContext can be used when the context is nil.
-	ErrNilContext = errors.New("nil Context")
+	ErrNilContext = errors.New("nil context")
 
 	// ErrNilCookieJar can be used when the cookie jar is nil.
-	ErrNilCookieJar = errors.New("sreq: nil cookie jar")
+	ErrNilCookieJar = errors.New("nil cookie jar")
 
-	// ErrJarNamedCookieNotPresent can be used when named cookie for a given URL not present in cookie jar.
-	ErrJarNamedCookieNotPresent = errors.New("sreq: named cookie for the given URL not present")
+	// ErrJarNoCookie can be used when named cookie for a given URL not present in cookie jar.
+	ErrJarNoCookie = errors.New("sreq: named cookie for the given URL not present")
 
-	// ErrResponseNamedCookieNotPresent can be used when named cookie of the HTTP response not present.
-	ErrResponseNamedCookieNotPresent = errors.New("sreq: named cookie not present")
+	// ErrResponseNoCookie can be used when named cookie of the HTTP response not present.
+	ErrResponseNoCookie = errors.New("sreq: named cookie not present")
 )
 
 type (

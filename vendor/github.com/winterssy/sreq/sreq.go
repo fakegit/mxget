@@ -15,7 +15,7 @@ import (
 
 const (
 	// Version of sreq.
-	Version = "0.7.7"
+	Version = "0.7.10"
 
 	defaultUserAgent = "go-sreq/" + Version
 )
@@ -34,8 +34,8 @@ type (
 	}
 
 	// Values maps a string key to an interface{} type value,
-	// support string, int, []string, []int or []interface{} only with string and int.
-	// Used for query parameters and form values.
+	// Its value supports string, bool, float64, float32, int, int64,.int32, uint, uint64, uint32
+	// or their combination. Used for query parameters and form values.
 	Values map[string]interface{}
 
 	// Params is an alias of Values, used for for query parameters.
@@ -45,8 +45,8 @@ type (
 	Form = Values
 
 	// Headers maps a string key to an interface{} type value,
-	// support string, int, []string, []int or []interface{} only with string and int.
-	// Used for headers.
+	// Its value supports string, bool, float64, float32, int, int64,.int32, uint, uint64, uint32
+	// or their combination. Used for headers.
 	Headers map[string]interface{}
 
 	// Files maps a string key to a *File type value, used for files of multipart payload.
@@ -89,7 +89,7 @@ func (v Values) Get(key string) []string {
 		return nil
 	}
 
-	return filter(v[key])
+	return convert(v[key])
 }
 
 // Set sets the key to value. It replaces any existing values.
@@ -111,6 +111,15 @@ func (v Values) Keys() []string {
 	return keys
 }
 
+// Marshal returns the JSON encoding of v.
+func (v Values) Marshal() string {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return "{}"
+	}
+	return string(b)
+}
+
 // Encode encodes v into URL-unescaped form sorted by key.
 func (v Values) Encode() string {
 	var sb strings.Builder
@@ -129,7 +138,7 @@ func (h Headers) Get(key string) []string {
 		return nil
 	}
 
-	return filter(h[key])
+	return convert(h[key])
 }
 
 // Set sets the key to value. It replaces any existing values.
@@ -167,13 +176,23 @@ func (h H) Get(key string) interface{} {
 	return h[key]
 }
 
-// GetSlice gets the []interface{} value associated with the given key.
-func (h H) GetSlice(key string) []interface{} {
+// GetH gets the H value associated with the given key.
+func (h H) GetH(key string) H {
 	if h == nil {
 		return nil
 	}
 
-	v, _ := h[key].([]interface{})
+	v, _ := h[key].(map[string]interface{})
+	return v
+}
+
+// GetString gets the string value associated with the given key.
+func (h H) GetString(key string) string {
+	if h == nil {
+		return ""
+	}
+
+	v, _ := h[key].(string)
 	return v
 }
 
@@ -187,27 +206,72 @@ func (h H) GetBool(key string) bool {
 	return v
 }
 
-// GetBoolSlice gets the []bool value associated with the given key.
-func (h H) GetBoolSlice(key string) []bool {
+// GetFloat64 gets the float64 value associated with the given key.
+func (h H) GetFloat64(key string) float64 {
+	if h == nil {
+		return 0
+	}
+
+	v, _ := h[key].(float64)
+	return v
+}
+
+// GetFloat32 gets the float32 value associated with the given key.
+func (h H) GetFloat32(key string) float32 {
+	return float32(h.GetFloat64(key))
+}
+
+// GetInt gets the int value associated with the given key.
+func (h H) GetInt(key string) int {
+	return int(h.GetFloat64(key))
+}
+
+// GetInt64 gets the int64 value associated with the given key.
+func (h H) GetInt64(key string) int64 {
+	return int64(h.GetFloat64(key))
+}
+
+// GetInt32 gets the int32 value associated with the given key.
+func (h H) GetInt32(key string) int32 {
+	return int32(h.GetFloat64(key))
+}
+
+// GetUint gets the uint value associated with the given key.
+func (h H) GetUint(key string) uint {
+	return uint(h.GetFloat64(key))
+}
+
+// GetUint64 gets the uint64 value associated with the given key.
+func (h H) GetUint64(key string) uint64 {
+	return uint64(h.GetFloat64(key))
+}
+
+// GetUint32 gets the uint32 value associated with the given key.
+func (h H) GetUint32(key string) uint32 {
+	return uint32(h.GetFloat64(key))
+}
+
+// GetSlice gets the []interface{} value associated with the given key.
+func (h H) GetSlice(key string) []interface{} {
+	if h == nil {
+		return nil
+	}
+
+	v, _ := h[key].([]interface{})
+	return v
+}
+
+// GetHSlice gets the []H value associated with the given key.
+func (h H) GetHSlice(key string) []H {
 	v := h.GetSlice(key)
-	vs := make([]bool, 0, len(v))
+	vs := make([]H, 0, len(v))
 
 	for _, vv := range v {
-		if vv, ok := vv.(bool); ok {
+		if vv, ok := vv.(map[string]interface{}); ok {
 			vs = append(vs, vv)
 		}
 	}
 	return vs
-}
-
-// GetString gets the string value associated with the given key.
-func (h H) GetString(key string) string {
-	if h == nil {
-		return ""
-	}
-
-	v, _ := h[key].(string)
-	return v
 }
 
 // GetStringSlice gets the []string value associated with the given key.
@@ -223,14 +287,17 @@ func (h H) GetStringSlice(key string) []string {
 	return vs
 }
 
-// GetFloat64 gets the float64 value associated with the given key.
-func (h H) GetFloat64(key string) float64 {
-	if h == nil {
-		return 0
-	}
+// GetBoolSlice gets the []bool value associated with the given key.
+func (h H) GetBoolSlice(key string) []bool {
+	v := h.GetSlice(key)
+	vs := make([]bool, 0, len(v))
 
-	v, _ := h[key].(float64)
-	return v
+	for _, vv := range v {
+		if vv, ok := vv.(bool); ok {
+			vs = append(vs, vv)
+		}
+	}
+	return vs
 }
 
 // GetFloat64Slice gets the []float64 value associated with the given key.
@@ -246,11 +313,6 @@ func (h H) GetFloat64Slice(key string) []float64 {
 	return vs
 }
 
-// GetFloat32 gets the float32 value associated with the given key.
-func (h H) GetFloat32(key string) float32 {
-	return float32(h.GetFloat64(key))
-}
-
 // GetFloat32Slice gets the []float32 value associated with the given key.
 func (h H) GetFloat32Slice(key string) []float32 {
 	v := h.GetFloat64Slice(key)
@@ -259,11 +321,6 @@ func (h H) GetFloat32Slice(key string) []float32 {
 		vs[i] = float32(vv)
 	}
 	return vs
-}
-
-// GetInt gets the int value associated with the given key.
-func (h H) GetInt(key string) int {
-	return int(h.GetFloat64(key))
 }
 
 // GetIntSlice gets the []int value associated with the given key.
@@ -276,9 +333,14 @@ func (h H) GetIntSlice(key string) []int {
 	return vs
 }
 
-// GetInt32 gets the int32 value associated with the given key.
-func (h H) GetInt32(key string) int32 {
-	return int32(h.GetFloat64(key))
+// GetInt64Slice gets the []int64 value associated with the given key.
+func (h H) GetInt64Slice(key string) []int64 {
+	v := h.GetFloat64Slice(key)
+	vs := make([]int64, len(v))
+	for i, vv := range v {
+		vs[i] = int64(vv)
+	}
+	return vs
 }
 
 // GetInt32Slice gets the []int32 value associated with the given key.
@@ -291,26 +353,6 @@ func (h H) GetInt32Slice(key string) []int32 {
 	return vs
 }
 
-// GetInt64 gets the int64 value associated with the given key.
-func (h H) GetInt64(key string) int64 {
-	return int64(h.GetFloat64(key))
-}
-
-// GetInt64Slice gets the []int64 value associated with the given key.
-func (h H) GetInt64Slice(key string) []int64 {
-	v := h.GetFloat64Slice(key)
-	vs := make([]int64, len(v))
-	for i, vv := range v {
-		vs[i] = int64(vv)
-	}
-	return vs
-}
-
-// GetUint gets the uint value associated with the given key.
-func (h H) GetUint(key string) uint {
-	return uint(h.GetFloat64(key))
-}
-
 // GetUintSlice gets the []uint value associated with the given key.
 func (h H) GetUintSlice(key string) []uint {
 	v := h.GetFloat64Slice(key)
@@ -319,26 +361,6 @@ func (h H) GetUintSlice(key string) []uint {
 		vs[i] = uint(vv)
 	}
 	return vs
-}
-
-// GetUint32 gets the uint32 value associated with the given key.
-func (h H) GetUint32(key string) uint32 {
-	return uint32(h.GetFloat64(key))
-}
-
-// GetUint32Slice gets the []uint32 value associated with the given key.
-func (h H) GetUint32Slice(key string) []uint32 {
-	v := h.GetFloat64Slice(key)
-	vs := make([]uint32, len(v))
-	for i, vv := range v {
-		vs[i] = uint32(vv)
-	}
-	return vs
-}
-
-// GetUint64 gets the uint64 value associated with the given key.
-func (h H) GetUint64(key string) uint64 {
-	return uint64(h.GetFloat64(key))
 }
 
 // GetUint64Slice gets the []uint64 value associated with the given key.
@@ -351,25 +373,12 @@ func (h H) GetUint64Slice(key string) []uint64 {
 	return vs
 }
 
-// GetH gets the H value associated with the given key.
-func (h H) GetH(key string) H {
-	if h == nil {
-		return nil
-	}
-
-	v, _ := h[key].(map[string]interface{})
-	return v
-}
-
-// GetHSlice gets the []H value associated with the given key.
-func (h H) GetHSlice(key string) []H {
-	v := h.GetSlice(key)
-	vs := make([]H, 0, len(v))
-
-	for _, vv := range v {
-		if vv, ok := vv.(map[string]interface{}); ok {
-			vs = append(vs, vv)
-		}
+// GetUint32Slice gets the []uint32 value associated with the given key.
+func (h H) GetUint32Slice(key string) []uint32 {
+	v := h.GetFloat64Slice(key)
+	vs := make([]uint32, len(v))
+	for i, vv := range v {
+		vs[i] = uint32(vv)
 	}
 	return vs
 }
@@ -457,7 +466,31 @@ func MustOpen(filename string) *File {
 	return file
 }
 
-func convertIntArray(v []int) []string {
+func convertBoolSlice(v []bool) []string {
+	vs := make([]string, len(v))
+	for i, vv := range v {
+		vs[i] = strconv.FormatBool(vv)
+	}
+	return vs
+}
+
+func convertFloat64Slice(v []float64) []string {
+	vs := make([]string, len(v))
+	for i, vv := range v {
+		vs[i] = strconv.FormatFloat(vv, 'f', -1, 64)
+	}
+	return vs
+}
+
+func convertFloat32Slice(v []float32) []string {
+	vs := make([]string, len(v))
+	for i, vv := range v {
+		vs[i] = strconv.FormatFloat(float64(vv), 'f', -1, 32)
+	}
+	return vs
+}
+
+func convertIntSlice(v []int) []string {
 	vs := make([]string, len(v))
 	for i, vv := range v {
 		vs[i] = strconv.Itoa(vv)
@@ -465,31 +498,109 @@ func convertIntArray(v []int) []string {
 	return vs
 }
 
-func convertStringIntArray(v []interface{}) []string {
-	vs := make([]string, 0, len(v))
-	for _, vv := range v {
-		switch vv := vv.(type) {
-		case string:
-			vs = append(vs, vv)
-		case int:
-			vs = append(vs, strconv.Itoa(vv))
-		}
+func convertInt64Slice(v []int64) []string {
+	vs := make([]string, len(v))
+	for i, vv := range v {
+		vs[i] = strconv.FormatInt(vv, 10)
 	}
 	return vs
 }
 
-func filter(v interface{}) []string {
+func convertInt32Slice(v []int32) []string {
+	vs := make([]string, len(v))
+	for i, vv := range v {
+		vs[i] = strconv.FormatInt(int64(vv), 10)
+	}
+	return vs
+}
+
+func convertUintSlice(v []uint) []string {
+	vs := make([]string, len(v))
+	for i, vv := range v {
+		vs[i] = strconv.FormatUint(uint64(vv), 10)
+	}
+	return vs
+}
+
+func convertUint64Slice(v []uint64) []string {
+	vs := make([]string, len(v))
+	for i, vv := range v {
+		vs[i] = strconv.FormatUint(vv, 10)
+	}
+	return vs
+}
+
+func convertUint32Slice(v []uint32) []string {
+	vs := make([]string, len(v))
+	for i, vv := range v {
+		vs[i] = strconv.FormatUint(uint64(vv), 10)
+	}
+	return vs
+}
+
+func convertSlice(v []interface{}) []string {
+	vs := make([]string, len(v))
+	for i, vv := range v {
+		vs[i] = toString(vv)
+	}
+	return vs
+}
+
+func toString(v interface{}) string {
+	switch v := v.(type) {
+	case string:
+		return v
+	case bool:
+		return strconv.FormatBool(v)
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64)
+	case float32:
+		return strconv.FormatFloat(float64(v), 'f', -1, 32)
+	case int:
+		return strconv.FormatInt(int64(v), 10)
+	case int64:
+		return strconv.FormatInt(v, 10)
+	case int32:
+		return strconv.FormatInt(int64(v), 10)
+	case uint:
+		return strconv.FormatUint(uint64(v), 10)
+	case uint64:
+		return strconv.FormatUint(v, 10)
+	case uint32:
+		return strconv.FormatUint(uint64(v), 10)
+	default:
+		return ""
+	}
+}
+
+func convert(v interface{}) []string {
 	switch v := v.(type) {
 	case string:
 		return []string{v}
-	case int:
-		return []string{strconv.Itoa(v)}
+	case bool, float64, float32, int, int64, int32, uint, uint64, uint32:
+		return []string{toString(v)}
 	case []string:
 		return v
+	case []bool:
+		return convertBoolSlice(v)
+	case []float64:
+		return convertFloat64Slice(v)
+	case []float32:
+		return convertFloat32Slice(v)
 	case []int:
-		return convertIntArray(v)
+		return convertIntSlice(v)
+	case []int64:
+		return convertInt64Slice(v)
+	case []int32:
+		return convertInt32Slice(v)
+	case []uint:
+		return convertUintSlice(v)
+	case []uint64:
+		return convertUint64Slice(v)
+	case []uint32:
+		return convertUint32Slice(v)
 	case []interface{}:
-		return convertStringIntArray(v)
+		return convertSlice(v)
 	default:
 		return nil
 	}

@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
-	"github.com/winterssy/easylog"
+	"github.com/winterssy/log"
 	"github.com/winterssy/mxget/internal/settings"
 	"github.com/winterssy/mxget/pkg/provider"
 )
@@ -45,13 +45,13 @@ func Run(cmd *cobra.Command, args []string) {
 	if dir != "" {
 		dir = filepath.Clean(dir)
 		if err := os.MkdirAll(dir, 0755); err != nil {
-			easylog.Fatalf("Can't make download dir: %v", err)
+			log.Fatalf("Can't make download dir: %v", err)
 		}
 		settings.Cfg.Dir = dir
 	}
 	if from != "" {
 		if provider.GetDesc(from) == "unknown" {
-			easylog.Fatalf("Unexpected music platform: %q", from)
+			log.Fatalf("Unexpected music platform: %q", from)
 		}
 		settings.Cfg.Platform = from
 	}

@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/bogem/id3v2"
-	"github.com/winterssy/easylog"
+	"github.com/winterssy/log"
 	"github.com/winterssy/mxget/internal/settings"
 	"github.com/winterssy/mxget/pkg/api"
 	"github.com/winterssy/mxget/pkg/concurrency"
@@ -22,7 +22,7 @@ import (
 func ConcurrentDownload(ctx context.Context, client provider.API, savePath string, songs ...*api.SongResponse) {
 	savePath = filepath.Join(settings.Cfg.Dir, utils.TrimInvalidFilePathChars(savePath))
 	if err := os.MkdirAll(savePath, 0755); err != nil {
-		easylog.Fatal(err)
+		log.Fatal(err)
 	}
 
 	var limit int
@@ -46,17 +46,17 @@ func ConcurrentDownload(ctx context.Context, client provider.API, savePath strin
 			defer c.Done()
 			songInfo := fmt.Sprintf("%s - %s", s.Artist, s.Name)
 			if !s.Playable {
-				easylog.Errorf("Download [%s] failed: song unavailable", songInfo)
+				log.Errorf("Download [%s] failed: song unavailable", songInfo)
 				return
 			}
 
 			filePath := filepath.Join(savePath, utils.TrimInvalidFilePathChars(songInfo))
-			easylog.Infof("Start download [%s]", songInfo)
+			log.Infof("Start download [%s]", songInfo)
 			mp3FilePath := filePath + ".mp3"
 			if !settings.Force {
 				_, err := os.Stat(mp3FilePath)
 				if err == nil {
-					easylog.Infof("Song already downloaded: [%s]", songInfo)
+					log.Infof("Song already downloaded: [%s]", songInfo)
 					return
 				}
 			}
@@ -68,19 +68,19 @@ func ConcurrentDownload(ctx context.Context, client provider.API, savePath strin
 				).
 				Save(mp3FilePath, 0664)
 			if err != nil {
-				easylog.Errorf("Download [%s] failed: %v", songInfo, err)
+				log.Errorf("Download [%s] failed: %v", songInfo, err)
 				_ = os.Remove(mp3FilePath)
 				return
 			}
-			easylog.Infof("Download [%s] complete", songInfo)
+			log.Infof("Download [%s] complete", songInfo)
 
 			if settings.Tag {
-				easylog.Infof("Update music metadata: [%s]", songInfo)
+				log.Infof("Update music metadata: [%s]", songInfo)
 				writeTag(ctx, client, mp3FilePath, s)
 			}
 
 			if settings.Lyric && s.Lyric != "" {
-				easylog.Infof("Save lyric: [%s]", songInfo)
+				log.Infof("Save lyric: [%s]", songInfo)
 				lrcFilePath := filePath + ".lrc"
 				saveLyric(lrcFilePath, s.Lyric)
 			}

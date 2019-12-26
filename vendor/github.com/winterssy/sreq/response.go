@@ -124,7 +124,7 @@ func (resp *Response) Cookie(name string) (*http.Cookie, error) {
 		}
 	}
 
-	return nil, ErrResponseNamedCookieNotPresent
+	return nil, ErrResponseNoCookie
 }
 
 // EnsureStatusOk ensures the HTTP response's status code must be 200.
@@ -190,22 +190,24 @@ func (resp *Response) Verbose(w io.Writer) error {
 		streamBodyTip = "if you see this message it means the HTTP request body is a stream and cannot be read twice"
 	)
 
-	rawRequest := resp.RawResponse.Request
-	fmt.Fprintf(w, "> %s %s %s\r\n", rawRequest.Method, rawRequest.URL.RequestURI(), rawRequest.Proto)
-	fmt.Fprintf(w, "> Host: %s\r\n", rawRequest.URL.Host)
-	for k := range rawRequest.Header {
-		fmt.Fprintf(w, "> %s: %s\r\n", k, rawRequest.Header.Get(k))
+	fmt.Fprintf(w, "> %s %s %s\r\n",
+		resp.RawResponse.Request.Method,
+		resp.RawResponse.Request.URL.RequestURI(),
+		resp.RawResponse.Request.Proto)
+	fmt.Fprintf(w, "> Host: %s\r\n", resp.RawResponse.Request.URL.Host)
+	for k := range resp.RawResponse.Request.Header {
+		fmt.Fprintf(w, "> %s: %s\r\n", k, resp.RawResponse.Request.Header.Get(k))
 	}
 	fmt.Fprint(w, ">\r\n")
 
-	if rawRequest.Body == nil {
+	if resp.RawResponse.Request.Body == nil {
 		goto handleResponse
 	}
 
-	if rawRequest.GetBody == nil {
+	if resp.RawResponse.Request.GetBody == nil {
 		fmt.Fprintf(w, "* %s\r\n", streamBodyTip)
-	} else if rawRequest.ContentLength != 0 {
-		rc, err := rawRequest.GetBody()
+	} else if resp.RawResponse.Request.ContentLength != 0 {
+		rc, err := resp.RawResponse.Request.GetBody()
 		if err != nil {
 			return err
 		}
@@ -220,10 +222,9 @@ func (resp *Response) Verbose(w io.Writer) error {
 	}
 
 handleResponse:
-	rawResponse := resp.RawResponse
-	fmt.Fprintf(w, "< %s %s\r\n", rawResponse.Proto, rawResponse.Status)
-	for k := range rawResponse.Header {
-		fmt.Fprintf(w, "< %s: %s\r\n", k, rawResponse.Header.Get(k))
+	fmt.Fprintf(w, "< %s %s\r\n", resp.RawResponse.Proto, resp.RawResponse.Status)
+	for k := range resp.RawResponse.Header {
+		fmt.Fprintf(w, "< %s: %s\r\n", k, resp.RawResponse.Header.Get(k))
 	}
 	fmt.Fprint(w, "<\r\n")
 
@@ -236,8 +237,8 @@ handleResponse:
 		return nil
 	}
 
-	defer rawResponse.Body.Close()
-	_, err := io.Copy(w, rawResponse.Body)
+	defer resp.RawResponse.Body.Close()
+	_, err := io.Copy(w, resp.RawResponse.Body)
 	if err != nil {
 		return err
 	}
