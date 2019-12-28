@@ -51,7 +51,7 @@ func (a *API) SearchSongsRaw(ctx context.Context, keyword string, page int, page
 			"pageSize": pageSize,
 		},
 	}
-	params := sreq.Params(signPayload(token, model))
+	params := signPayload(token, model)
 
 	resp := new(SearchSongsResponse)
 	err = a.Request(sreq.MethodGet, APISearch,

@@ -36,7 +36,7 @@ func (a *API) GetSongDetailRaw(ctx context.Context, songId string) (*SongDetailR
 	} else {
 		model["songId"] = songId
 	}
-	params := sreq.Params(signPayload(token, model))
+	params := signPayload(token, model)
 
 	resp := new(SongDetailResponse)
 	err = a.Request(sreq.MethodGet, APIGetSongDetail,

@@ -53,7 +53,7 @@ func (a *API) GetArtistInfoRaw(ctx context.Context, artistId string) (*ArtistInf
 	} else {
 		model["artistId"] = artistId
 	}
-	params := sreq.Params(signPayload(token, model))
+	params := signPayload(token, model)
 
 	resp := new(ArtistInfoResponse)
 	err = a.Request(sreq.MethodGet, APIGetArtistInfo,
@@ -91,7 +91,7 @@ func (a *API) GetArtistSongsRaw(ctx context.Context, artistId string, page int, 
 	} else {
 		model["artistId"] = artistId
 	}
-	params := sreq.Params(signPayload(token, model))
+	params := signPayload(token, model)
 
 	resp := new(ArtistSongsResponse)
 	err = a.Request(sreq.MethodGet, APIGetArtistSongs,

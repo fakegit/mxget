@@ -80,7 +80,7 @@ func (a *API) GetPlaylistDetailRaw(ctx context.Context, playlistId string, page 
 			"pageSize": pageSize,
 		},
 	}
-	params := sreq.Params(signPayload(token, model))
+	params := signPayload(token, model)
 
 	resp := new(PlaylistDetailResponse)
 	err = a.Request(sreq.MethodGet, APIGetPlaylistDetail,
@@ -113,7 +113,7 @@ func (a *API) GetPlaylistSongsRaw(ctx context.Context, playlistId string, page i
 			"pageSize": pageSize,
 		},
 	}
-	params := sreq.Params(signPayload(token, model))
+	params := signPayload(token, model)
 
 	resp := new(PlaylistSongsResponse)
 	err = a.Request(sreq.MethodGet, APIGetPlaylistSongs,

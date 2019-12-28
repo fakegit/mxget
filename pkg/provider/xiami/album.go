@@ -48,7 +48,7 @@ func (a *API) GetAlbumRaw(ctx context.Context, albumId string) (*AlbumResponse, 
 	} else {
 		model["albumId"] = albumId
 	}
-	params := sreq.Params(signPayload(token, model))
+	params := signPayload(token, model)
 
 	resp := new(AlbumResponse)
 	err = a.Request(sreq.MethodGet, APIGetAlbum,

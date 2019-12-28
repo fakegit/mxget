@@ -22,7 +22,7 @@ func (a *API) LoginRaw(ctx context.Context, account string, password string) (*L
 		"account":  account,
 		"password": password,
 	}
-	params := sreq.Params(signPayload(token, model))
+	params := signPayload(token, model)
 
 	resp := new(LoginResponse)
 	err = a.Request(sreq.MethodGet, APILogin,
