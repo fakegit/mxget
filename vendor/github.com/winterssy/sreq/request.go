@@ -52,9 +52,10 @@ type (
 		RawRequest *http.Request
 		Err        error
 
-		getBody       func() io.Reader
-		timeout       time.Duration
-		retry         *retry
+		getBody func() io.Reader
+		ctx     context.Context
+		retry   *retry
+
 		errBackground chan error
 	}
 
@@ -62,6 +63,7 @@ type (
 	RequestOption func(*Request) *Request
 
 	// RequestInterceptor specifies a request interceptor.
+	// If the returned error isn't nil, sreq will abort the request.
 	RequestInterceptor func(*Request) error
 
 	retry struct {
@@ -378,9 +380,6 @@ func (req *Request) SetMultipart(files Files, form KV) *Request {
 	}
 
 	req.errBackground = make(chan error, 1)
-	ctx, cancel := context.WithCancel(req.RawRequest.Context())
-	req.RawRequest = req.RawRequest.WithContext(ctx)
-
 	pr, pw := io.Pipe()
 	mw := multipart.NewWriter(pw)
 	go func() {
@@ -393,7 +392,6 @@ func (req *Request) SetMultipart(files Files, form KV) *Request {
 				Cause: "SetMultipart",
 				Err:   err,
 			}
-			cancel()
 			return
 		}
 
@@ -450,27 +448,12 @@ func (req *Request) SetContext(ctx context.Context) *Request {
 		return req
 	}
 
-	if ctx == nil {
-		req.raiseError("SetContext", ErrNilContext)
-		return req
-	}
-
-	req.RawRequest = req.RawRequest.WithContext(ctx)
-	return req
-}
-
-// SetTimeout sets timeout for the HTTP request.
-func (req *Request) SetTimeout(timeout time.Duration) *Request {
-	if req.Err != nil {
-		return req
-	}
-
-	req.timeout = timeout
+	req.ctx = ctx
 	return req
 }
 
 // SetRetry sets retry policy for the HTTP request.
-// Notes: Request timeout or context has priority over the retry policy.
+// Notes: Request context has priority over the retry policy.
 func (req *Request) SetRetry(attempts int, delay time.Duration,
 	conditions ...func(*Response) bool) *Request {
 	if req.Err != nil {
@@ -608,15 +591,8 @@ func WithContext(ctx context.Context) RequestOption {
 	}
 }
 
-// WithTimeout sets timeout for the HTTP request.
-func WithTimeout(timeout time.Duration) RequestOption {
-	return func(req *Request) *Request {
-		return req.SetTimeout(timeout)
-	}
-}
-
 // WithRetry sets retry policy for the HTTP request.
-// Notes: Request timeout or context has priority over the retry policy.
+// Notes: Request context has priority over the retry policy.
 func WithRetry(attempts int, delay time.Duration,
 	conditions ...func(*Response) bool) RequestOption {
 	return func(req *Request) *Request {

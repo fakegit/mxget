@@ -9,9 +9,6 @@ var (
 	// ErrUnexpectedTransport can be used if assert a RoundTripper as a non-nil *http.Transport instance failed.
 	ErrUnexpectedTransport = errors.New("current transport isn't a non-nil *http.Transport instance")
 
-	// ErrNilContext can be used when the context is nil.
-	ErrNilContext = errors.New("nil context")
-
 	// ErrNilCookieJar can be used when the cookie jar is nil.
 	ErrNilCookieJar = errors.New("nil cookie jar")
 

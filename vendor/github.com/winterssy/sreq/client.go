@@ -261,26 +261,26 @@ func (c *Client) AppendClientCerts(certs ...tls.Certificate) *Client {
 	return c
 }
 
-// AppendRootCertsFromPem appends root certificates from a pem file to the HTTP client.
-func AppendRootCertsFromPem(pemFilePath string) *Client {
-	return GlobalClient.AppendRootCertsFromPem(pemFilePath)
+// AppendRootCerts appends root certificates from a pem file to the HTTP client.
+func AppendRootCerts(pemFile string) *Client {
+	return GlobalClient.AppendRootCerts(pemFile)
 }
 
-// AppendRootCertsFromPem appends root certificates from a pem file to the HTTP client.
-func (c *Client) AppendRootCertsFromPem(pemFile string) *Client {
+// AppendRootCerts appends root certificates from a pem file to the HTTP client.
+func (c *Client) AppendRootCerts(pemFile string) *Client {
 	if c.Err != nil {
 		return c
 	}
 
 	pemCerts, err := ioutil.ReadFile(pemFile)
 	if err != nil {
-		c.raiseError("AppendRootCertsFromPem", err)
+		c.raiseError("AppendRootCerts", err)
 		return c
 	}
 
 	t, err := c.httpTransport()
 	if err != nil {
-		c.raiseError("AppendRootCertsFromPem", err)
+		c.raiseError("AppendRootCerts", err)
 		return c
 	}
 
@@ -548,19 +548,15 @@ var noRetry = &retry{
 
 func (c *Client) doWithRetry(req *Request, resp *Response) {
 	retry := noRetry
-	if req.retry != nil {
+	if req.retry != nil && req.RawRequest.Body == nil {
 		retry = req.retry
 	}
 
-	allowRetry := req.RawRequest.Body == nil
-
-	ctx := req.RawRequest.Context()
-	var cancel context.CancelFunc
-	if req.timeout > 0 {
-		ctx, cancel = context.WithTimeout(ctx, req.timeout)
-		req.RawRequest = req.RawRequest.WithContext(ctx)
-		defer cancel()
+	ctx := req.ctx
+	if ctx == nil {
+		ctx = context.Background()
 	}
+	req.RawRequest = req.RawRequest.WithContext(ctx)
 
 	var err error
 	for i := 0; i < retry.attempts; i++ {
@@ -569,16 +565,17 @@ func (c *Client) doWithRetry(req *Request, resp *Response) {
 		}
 
 		resp.RawResponse, resp.Err = c.do(req.RawRequest)
-		if err = ctx.Err(); err != nil {
-			select {
-			case err = <-req.errBackground:
-			default:
-			}
+		select {
+		case <-ctx.Done():
+			resp.Err = ctx.Err()
+			return
+		case err = <-req.errBackground:
 			resp.Err = err
 			return
+		default:
 		}
 
-		if !allowRetry {
+		if i == retry.attempts-1 {
 			return
 		}
 
@@ -589,8 +586,7 @@ func (c *Client) doWithRetry(req *Request, resp *Response) {
 				break
 			}
 		}
-
-		if !shouldRetry || i == retry.attempts-1 {
+		if !shouldRetry {
 			return
 		}
 

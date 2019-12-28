@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -14,7 +15,7 @@ import (
 
 const (
 	// Version of sreq.
-	Version = "0.7.11"
+	Version = "0.7.13"
 
 	defaultUserAgent = "go-sreq/" + Version
 )
@@ -54,8 +55,7 @@ type (
 	Files map[string]*File
 
 	// File specifies a file.
-	// To upload a file you must specify its Filename field,
-	// otherwise sreq will raise a *RequestError and then abort request.
+	// To upload a file you must specify its Filename field, otherwise sreq will raise a *RequestError.
 	// If you don't specify the MIME field, sreq will detect automatically using http.DetectContentType.
 	File struct {
 		Filename string
@@ -447,7 +447,7 @@ func Open(filename string) (*File, error) {
 		return nil, err
 	}
 
-	return NewFile(filename, file), nil
+	return NewFile(filepath.Base(filename), file), nil
 }
 
 // MustOpen opens the named file and returns a *File instance whose Filename is filename.

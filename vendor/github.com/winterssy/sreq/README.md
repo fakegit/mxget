@@ -45,13 +45,13 @@ import "github.com/winterssy/sreq"
 The usages of `sreq` are very similar to `net/http` , you can switch from it to `sreq` easily. For example, if your HTTP request code like this:
 
 ```go
-resp, err := http.Get("http://www.google.com")
+resp, err := http.Get("https://www.google.com")
 ```
 
 Use `sreq` you just need to change your code like this:
 
 ```go
-resp, err := sreq.Get("http://www.google.com").Raw()
+resp, err := sreq.Get("https://www.google.com").Raw()
 ```
 
 You have two convenient ways to access the APIs of `sreq` .
