@@ -10,12 +10,11 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 )
 
 const (
 	// Version of sreq.
-	Version = "0.7.10"
+	Version = "0.7.11"
 
 	defaultUserAgent = "go-sreq/" + Version
 )
@@ -35,18 +34,20 @@ type (
 
 	// Values maps a string key to an interface{} type value,
 	// Its value supports string, bool, float64, float32, int, int64,.int32, uint, uint64, uint32
-	// or their combination. Used for query parameters and form values.
+	// or their combination. sreq will convert to string automatically.
+	// Used for query parameters and form values.
 	Values map[string]interface{}
 
-	// Params is an alias of Values, used for for query parameters.
+	// Params is an alias of Values, used for for request query parameters.
 	Params = Values
 
-	// Form is an alias of Values, used for form values.
+	// Form is an alias of Values, used for request form values.
 	Form = Values
 
 	// Headers maps a string key to an interface{} type value,
 	// Its value supports string, bool, float64, float32, int, int64,.int32, uint, uint64, uint32
-	// or their combination. Used for headers.
+	// or their combination. sreq will convert to string automatically.
+	// Used for request headers.
 	Headers map[string]interface{}
 
 	// Files maps a string key to a *File type value, used for files of multipart payload.
@@ -64,12 +65,6 @@ type (
 
 	// H is a shortcut for map[string]interface{}, used for JSON unmarshalling.
 	H map[string]interface{}
-
-	retry struct {
-		attempts   int
-		delay      time.Duration
-		conditions []func(*Response) bool
-	}
 )
 
 func acquireBuffer() *bytes.Buffer {

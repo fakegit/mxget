@@ -15,11 +15,8 @@ var (
 	// ErrNilCookieJar can be used when the cookie jar is nil.
 	ErrNilCookieJar = errors.New("nil cookie jar")
 
-	// ErrJarNoCookie can be used when named cookie for a given URL not present in cookie jar.
-	ErrJarNoCookie = errors.New("sreq: named cookie for the given URL not present")
-
-	// ErrResponseNoCookie can be used when named cookie of the HTTP response not present.
-	ErrResponseNoCookie = errors.New("sreq: named cookie not present")
+	// ErrNoCookie can be used when a cookie not found in the HTTP response or cookie jar.
+	ErrNoCookie = errors.New("sreq: named cookie not present")
 )
 
 type (

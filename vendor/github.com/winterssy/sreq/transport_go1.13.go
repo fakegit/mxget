@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// DefaultTransport returns an HTTP transport used by DefaultClient.
+// DefaultTransport returns a preset HTTP transport.
 // It's a clone of http.DefaultTransport indeed.
 func DefaultTransport() *http.Transport {
 	return &http.Transport{

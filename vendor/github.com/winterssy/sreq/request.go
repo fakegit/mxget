@@ -63,6 +63,12 @@ type (
 
 	// RequestInterceptor specifies a request interceptor.
 	RequestInterceptor func(*Request) error
+
+	retry struct {
+		attempts   int
+		delay      time.Duration
+		conditions []func(*Response) bool
+	}
 )
 
 func (req *Request) raiseError(cause string, err error) {

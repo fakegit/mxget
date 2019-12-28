@@ -4,6 +4,11 @@
 
 ![Test](https://img.shields.io/github/workflow/status/winterssy/sreq/Test/master?label=Test&logo=appveyor) ![codecov](https://codecov.io/gh/winterssy/sreq/branch/master/graph/badge.svg) ![Go Report Card](https://goreportcard.com/badge/github.com/winterssy/sreq) [![GoDoc](https://godoc.org/github.com/winterssy/sreq?status.svg)](https://godoc.org/github.com/winterssy/sreq) [![License](https://img.shields.io/github/license/winterssy/sreq.svg)](LICENSE)
 
+## Notes
+
+- `sreq` now is under a beta state, use the latest version if you want to try it.
+- The author does not provide any backward compatible guarantee at present.
+
 ## Features
 
 - Requests-style APIs.

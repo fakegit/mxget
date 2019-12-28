@@ -32,8 +32,8 @@ func signPayload(token string, model interface{}) sreq.Params {
 	dataBytes, _ := json.Marshal(data)
 	dataStr := string(dataBytes)
 
-	t := fmt.Sprintf("%d", time.Now().UnixNano()/(1e6))
-	signStr := fmt.Sprintf("%s&%s&%s&%s", token, t, APPKey, dataStr)
+	t := time.Now().UnixNano() / (1e6)
+	signStr := fmt.Sprintf("%s&%d&%s&%s", token, t, APPKey, dataStr)
 	sign := fmt.Sprintf("%x", md5.Sum([]byte(signStr)))
 
 	return sreq.Params{
