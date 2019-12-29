@@ -15,7 +15,7 @@ import (
 
 const (
 	// Version of sreq.
-	Version = "0.7.13"
+	Version = "0.7.14"
 
 	defaultUserAgent = "go-sreq/" + Version
 )
@@ -34,8 +34,8 @@ type (
 	}
 
 	// Values maps a string key to an interface{} type value,
-	// Its value supports string, bool, float64, float32, int, int64,.int32, uint, uint64, uint32
-	// or their combination. sreq will convert to string automatically.
+	// Its value supports string, bool, float64, float32, int, int64, int32, uint, uint64, uint32
+	// or their combination, sreq will convert to string automatically.
 	// Used for query parameters and form values.
 	Values map[string]interface{}
 
@@ -46,8 +46,8 @@ type (
 	Form = Values
 
 	// Headers maps a string key to an interface{} type value,
-	// Its value supports string, bool, float64, float32, int, int64,.int32, uint, uint64, uint32
-	// or their combination. sreq will convert to string automatically.
+	// Its value supports string, bool, float64, float32, int, int64, int32, uint, uint64, uint32
+	// or their combination, sreq will convert to string automatically.
 	// Used for request headers.
 	Headers map[string]interface{}
 
