@@ -8,7 +8,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/http/cookiejar"
-	stdurl "net/url"
+	neturl "net/url"
 	"strings"
 	"time"
 
@@ -163,12 +163,12 @@ func (c *Client) SetTimeout(timeout time.Duration) *Client {
 }
 
 // SetProxy sets proxy of the HTTP client.
-func SetProxy(proxy func(*http.Request) (*stdurl.URL, error)) *Client {
+func SetProxy(proxy func(*http.Request) (*neturl.URL, error)) *Client {
 	return GlobalClient.SetProxy(proxy)
 }
 
 // SetProxy sets proxy of the HTTP client.
-func (c *Client) SetProxy(proxy func(*http.Request) (*stdurl.URL, error)) *Client {
+func (c *Client) SetProxy(proxy func(*http.Request) (*neturl.URL, error)) *Client {
 	if c.Err != nil {
 		return c
 	}
@@ -195,7 +195,7 @@ func (c *Client) SetProxyFromURL(url string) *Client {
 		return c
 	}
 
-	fixedURL, err := stdurl.Parse(url)
+	fixedURL, err := neturl.Parse(url)
 	if err != nil {
 		c.raiseError("SetProxyFromURL", err)
 		return c
@@ -337,7 +337,7 @@ func (c *Client) SetCookies(url string, cookies ...*http.Cookie) *Client {
 		return c
 	}
 
-	u, err := stdurl.Parse(url)
+	u, err := neturl.Parse(url)
 	if err != nil {
 		c.raiseError("SetCookies", err)
 		return c
@@ -451,18 +451,18 @@ func (c *Client) Send(method string, url string, opts ...RequestOption) *Respons
 	return c.Do(req)
 }
 
-// FilterCookies returns the cookies to send in a request for the given URL.
+// FilterCookies returns the cookies to send in a request for the given URL from cookie jar.
 func FilterCookies(url string) ([]*http.Cookie, error) {
 	return GlobalClient.FilterCookies(url)
 }
 
-// FilterCookies returns the cookies to send in a request for the given URL.
+// FilterCookies returns the cookies to send in a request for the given URL from cookie jar.
 func (c *Client) FilterCookies(url string) ([]*http.Cookie, error) {
 	if c.RawClient.Jar == nil {
 		return nil, ErrNilCookieJar
 	}
 
-	u, err := stdurl.Parse(url)
+	u, err := neturl.Parse(url)
 	if err != nil {
 		return nil, err
 	}
@@ -470,12 +470,12 @@ func (c *Client) FilterCookies(url string) ([]*http.Cookie, error) {
 	return c.RawClient.Jar.Cookies(u), nil
 }
 
-// FilterCookie returns the named cookie to send in a request for the given URL.
+// FilterCookie returns the named cookie to send in a request for the given URL from cookie jar.
 func FilterCookie(url string, name string) (*http.Cookie, error) {
 	return GlobalClient.FilterCookie(url, name)
 }
 
-// FilterCookie returns the named cookie to send in a request for the given URL.
+// FilterCookie returns the named cookie to send in a request for the given URL from cookie jar.
 func (c *Client) FilterCookie(url string, name string) (*http.Cookie, error) {
 	cookies, err := c.FilterCookies(url)
 	if err != nil {
@@ -516,6 +516,7 @@ func (c *Client) Do(req *Request) *Response {
 		return resp
 	}
 
+	req.setup()
 	c.doWithRetry(req, resp)
 	c.onAfterResponse(resp)
 	return resp
@@ -547,8 +548,9 @@ var noRetry = &retry{
 }
 
 func (c *Client) doWithRetry(req *Request, resp *Response) {
+	allowRetry := req.RawRequest.Body == nil || req.RawRequest.GetBody != nil
 	retry := noRetry
-	if req.retry != nil && req.RawRequest.Body == nil {
+	if req.retry != nil && allowRetry {
 		retry = req.retry
 	}
 
@@ -560,19 +562,10 @@ func (c *Client) doWithRetry(req *Request, resp *Response) {
 
 	var err error
 	for i := 0; i < retry.attempts; i++ {
-		if req.getBody != nil {
-			req.SetBody(req.getBody())
-		}
-
-		resp.RawResponse, resp.Err = c.do(req.RawRequest)
-		select {
-		case <-ctx.Done():
-			resp.Err = ctx.Err()
-			return
-		case err = <-req.errBackground:
+		resp.RawResponse, resp.Err = c.do(req)
+		if err = ctx.Err(); err != nil {
 			resp.Err = err
 			return
-		default:
 		}
 
 		if i == retry.attempts-1 {
@@ -590,6 +583,10 @@ func (c *Client) doWithRetry(req *Request, resp *Response) {
 			return
 		}
 
+		if req.RawRequest.GetBody != nil {
+			req.RawRequest.Body, _ = req.RawRequest.GetBody()
+		}
+
 		select {
 		case <-time.After(retry.delay):
 		case <-ctx.Done():
@@ -599,10 +596,16 @@ func (c *Client) doWithRetry(req *Request, resp *Response) {
 	}
 }
 
-func (c *Client) do(rawRequest *http.Request) (*http.Response, error) {
-	rawResponse, err := c.RawClient.Do(rawRequest)
+func (c *Client) do(req *Request) (*http.Response, error) {
+	rawResponse, err := c.RawClient.Do(req.RawRequest)
 	if err != nil {
 		return rawResponse, err
+	}
+
+	select {
+	case err = <-req.errBackground:
+		return rawResponse, err
+	default:
 	}
 
 	if strings.EqualFold(rawResponse.Header.Get("Content-Encoding"), "gzip") &&

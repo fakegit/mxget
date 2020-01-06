@@ -12,7 +12,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
-	stdurl "net/url"
+	neturl "net/url"
 	"strings"
 	"time"
 )
@@ -52,10 +52,11 @@ type (
 		RawRequest *http.Request
 		Err        error
 
-		getBody func() io.Reader
-		ctx     context.Context
-		retry   *retry
-
+		params        Params
+		form          Form
+		headers       Headers
+		retry         *retry
+		ctx           context.Context
 		errBackground chan error
 	}
 
@@ -89,8 +90,11 @@ func NewRequest(method string, url string) *Request {
 		return req
 	}
 
-	rawRequest.Header.Set("User-Agent", defaultUserAgent)
 	req.RawRequest = rawRequest
+	req.params = make(Params)
+	req.form = make(Form)
+	req.headers = make(Headers)
+	req.SetUserAgent(defaultUserAgent)
 	return req
 }
 
@@ -99,13 +103,7 @@ func (req *Request) Raw() (*http.Request, error) {
 	return req.RawRequest, req.Err
 }
 
-// SetBody sets body for the HTTP request.
-// Notes: SetBody does not support retry since it's unable to read a stream twice.
-func (req *Request) SetBody(body io.Reader) *Request {
-	if req.Err != nil {
-		return req
-	}
-
+func (req *Request) setBody(body io.Reader) {
 	rc, ok := body.(io.ReadCloser)
 	if !ok && body != nil {
 		rc = ioutil.NopCloser(body)
@@ -155,7 +153,58 @@ func (req *Request) SetBody(body io.Reader) *Request {
 			req.RawRequest.GetBody = func() (io.ReadCloser, error) { return http.NoBody, nil }
 		}
 	}
+}
 
+func (req *Request) setup() {
+	if len(req.params) != 0 {
+		req.setQuery()
+	}
+	if len(req.form) != 0 {
+		req.setForm()
+	}
+	req.setHeaders()
+}
+
+func (req *Request) setQuery() {
+	query := req.RawRequest.URL.Query()
+	params := req.params.Clone()
+	for k, vs := range params {
+		for _, v := range vs {
+			query.Add(k, v)
+		}
+	}
+	req.RawRequest.URL.RawQuery = query.Encode()
+}
+
+func (req *Request) setForm() {
+	form := req.form.Clone()
+	data := make(neturl.Values, len(form))
+	for k, vs := range form {
+		for _, v := range vs {
+			data.Add(k, v)
+		}
+	}
+	req.setBody(strings.NewReader(data.Encode()))
+	req.SetContentType("application/x-www-form-urlencoded")
+}
+
+func (req *Request) setHeaders() {
+	headers := req.headers.Clone()
+	for k, vs := range headers {
+		for _, v := range vs {
+			req.RawRequest.Header.Add(k, v)
+		}
+	}
+}
+
+// SetBody sets body for the HTTP request.
+// Notes: SetBody may not support retry since it's unable to read a stream twice.
+func (req *Request) SetBody(body io.Reader) *Request {
+	if req.Err != nil {
+		return req
+	}
+
+	req.setBody(body)
 	return req
 }
 
@@ -170,77 +219,52 @@ func (req *Request) SetHost(host string) *Request {
 }
 
 // SetHeaders sets headers for the HTTP request.
-func (req *Request) SetHeaders(headers KV) *Request {
+func (req *Request) SetHeaders(headers Headers) *Request {
 	if req.Err != nil {
 		return req
 	}
 
-	for _, k := range headers.Keys() {
-		for _, v := range headers.Get(k) {
-			req.RawRequest.Header.Add(k, v)
-		}
+	req.headers.Update(headers)
+	return req
+}
+
+func (req *Request) setHeader(key string, value string) *Request {
+	if req.Err != nil {
+		return req
 	}
 
+	req.headers.Set(key, value)
 	return req
 }
 
 // SetContentType sets Content-Type header value for the HTTP request.
 func (req *Request) SetContentType(contentType string) *Request {
-	if req.Err != nil {
-		return req
-	}
-
-	req.RawRequest.Header.Set("Content-Type", contentType)
-	return req
+	return req.setHeader("Content-Type", contentType)
 }
 
 // SetUserAgent sets User-Agent header value for the HTTP request.
 func (req *Request) SetUserAgent(userAgent string) *Request {
-	if req.Err != nil {
-		return req
-	}
-
-	req.RawRequest.Header.Set("User-Agent", userAgent)
-	return req
+	return req.setHeader("User-Agent", userAgent)
 }
 
 // SetReferer sets Referer header value for the HTTP request.
 func (req *Request) SetReferer(referer string) *Request {
-	if req.Err != nil {
-		return req
-	}
-
-	req.RawRequest.Header.Set("Referer", referer)
-	return req
+	return req.setHeader("Referer", referer)
 }
 
 // SetQuery sets query params for the HTTP request.
-func (req *Request) SetQuery(params KV) *Request {
+func (req *Request) SetQuery(params Params) *Request {
 	if req.Err != nil {
 		return req
 	}
 
-	query := req.RawRequest.URL.Query()
-	for _, k := range params.Keys() {
-		for _, v := range params.Get(k) {
-			query.Add(k, v)
-		}
-	}
-
-	req.RawRequest.URL.RawQuery = query.Encode()
+	req.params.Update(params)
 	return req
 }
 
 // SetContent sets bytes payload for the HTTP request.
 func (req *Request) SetContent(content []byte) *Request {
-	if req.Err != nil {
-		return req
-	}
-
-	req.getBody = func() io.Reader {
-		return bytes.NewBuffer(content)
-	}
-	return req
+	return req.SetBody(bytes.NewBuffer(content))
 }
 
 // SetText sets plain text payload for the HTTP request.
@@ -249,32 +273,18 @@ func (req *Request) SetText(text string) *Request {
 		return req
 	}
 
-	req.getBody = func() io.Reader {
-		return bytes.NewBufferString(text)
-	}
+	req.setBody(bytes.NewBufferString(text))
 	req.SetContentType("text/plain; charset=utf-8")
 	return req
 }
 
 // SetForm sets form payload for the HTTP request.
-func (req *Request) SetForm(form KV) *Request {
+func (req *Request) SetForm(form Form) *Request {
 	if req.Err != nil {
 		return req
 	}
 
-	keys := form.Keys()
-	data := make(stdurl.Values, len(keys))
-	for _, k := range keys {
-		for _, v := range form.Get(k) {
-			data.Add(k, v)
-		}
-	}
-
-	s := data.Encode()
-	req.getBody = func() io.Reader {
-		return strings.NewReader(s)
-	}
-	req.SetContentType("application/x-www-form-urlencoded")
+	req.form.Update(form)
 	return req
 }
 
@@ -290,9 +300,7 @@ func (req *Request) SetJSON(data interface{}, escapeHTML bool) *Request {
 		return req
 	}
 
-	req.getBody = func() io.Reader {
-		return bytes.NewReader(b)
-	}
+	req.setBody(bytes.NewReader(b))
 	req.SetContentType("application/json")
 	return req
 }
@@ -309,9 +317,7 @@ func (req *Request) SetXML(data interface{}) *Request {
 		return req
 	}
 
-	req.getBody = func() io.Reader {
-		return bytes.NewReader(b)
-	}
+	req.setBody(bytes.NewReader(b))
 	req.SetContentType("application/xml")
 	return req
 }
@@ -322,7 +328,7 @@ func escapeQuotes(s string) string {
 	return quoteEscaper.Replace(s)
 }
 
-func setFiles(mw *multipart.Writer, files Files) error {
+func setMultipartFiles(mw *multipart.Writer, files Files) error {
 	const (
 		fileFormat = `form-data; name="%s"; filename="%s"`
 	)
@@ -364,9 +370,9 @@ func setFiles(mw *multipart.Writer, files Files) error {
 	return nil
 }
 
-func setForm(mw *multipart.Writer, form KV) {
-	for _, k := range form.Keys() {
-		for _, v := range form.Get(k) {
+func setMultipartForm(mw *multipart.Writer, form Form) {
+	for k, vs := range form.Clone() {
+		for _, v := range vs {
 			mw.WriteField(k, v)
 		}
 	}
@@ -374,7 +380,7 @@ func setForm(mw *multipart.Writer, form KV) {
 
 // SetMultipart sets multipart payload for the HTTP request.
 // Notes: SetMultipart does not support retry since it's unable to read a stream twice.
-func (req *Request) SetMultipart(files Files, form KV) *Request {
+func (req *Request) SetMultipart(files Files, form Form) *Request {
 	if req.Err != nil {
 		return req
 	}
@@ -386,7 +392,7 @@ func (req *Request) SetMultipart(files Files, form KV) *Request {
 		defer pw.Close()
 		defer mw.Close()
 
-		err := setFiles(mw, files)
+		err := setMultipartFiles(mw, files)
 		if err != nil {
 			req.errBackground <- &RequestError{
 				Cause: "SetMultipart",
@@ -396,11 +402,11 @@ func (req *Request) SetMultipart(files Files, form KV) *Request {
 		}
 
 		if form != nil {
-			setForm(mw, form)
+			setMultipartForm(mw, form)
 		}
 	}()
 
-	req.SetBody(pr)
+	req.setBody(pr)
 	req.SetContentType(mw.FormDataContentType())
 	return req
 }
@@ -424,22 +430,12 @@ func basicAuth(username, password string) string {
 
 // SetBasicAuth sets basic authentication for the HTTP request.
 func (req *Request) SetBasicAuth(username string, password string) *Request {
-	if req.Err != nil {
-		return req
-	}
-
-	req.RawRequest.Header.Set("Authorization", "Basic "+basicAuth(username, password))
-	return req
+	return req.setHeader("Authorization", "Basic "+basicAuth(username, password))
 }
 
 // SetBearerToken sets bearer token for the HTTP request.
 func (req *Request) SetBearerToken(token string) *Request {
-	if req.Err != nil {
-		return req
-	}
-
-	req.RawRequest.Header.Set("Authorization", "Bearer "+token)
-	return req
+	return req.setHeader("Authorization", "Bearer "+token)
 }
 
 // SetContext sets context for the HTTP request.
@@ -471,7 +467,7 @@ func (req *Request) SetRetry(attempts int, delay time.Duration,
 }
 
 // WithBody sets body for the HTTP request.
-// Notes: WithBody does not support retry since it's unable to read a stream twice.
+// Notes: WithBody may not support retry since it's unable to read a stream twice.
 func WithBody(body io.Reader) RequestOption {
 	return func(req *Request) *Request {
 		return req.SetBody(body)
@@ -486,7 +482,7 @@ func WithHost(host string) RequestOption {
 }
 
 // WithHeaders sets headers for the HTTP request.
-func WithHeaders(headers KV) RequestOption {
+func WithHeaders(headers Headers) RequestOption {
 	return func(req *Request) *Request {
 		return req.SetHeaders(headers)
 	}
@@ -514,7 +510,7 @@ func WithReferer(referer string) RequestOption {
 }
 
 // WithQuery sets query params for the HTTP request.
-func WithQuery(params KV) RequestOption {
+func WithQuery(params Params) RequestOption {
 	return func(req *Request) *Request {
 		return req.SetQuery(params)
 	}
@@ -535,7 +531,7 @@ func WithText(text string) RequestOption {
 }
 
 // WithForm sets form payload for the HTTP request.
-func WithForm(form KV) RequestOption {
+func WithForm(form Form) RequestOption {
 	return func(req *Request) *Request {
 		return req.SetForm(form)
 	}
@@ -557,7 +553,7 @@ func WithXML(data interface{}) RequestOption {
 
 // WithMultipart sets multipart payload for the HTTP request.
 // Notes: WithMultipart does not support retry since it's unable to read a stream twice.
-func WithMultipart(files Files, form KV) RequestOption {
+func WithMultipart(files Files, form Form) RequestOption {
 	return func(req *Request) *Request {
 		return req.SetMultipart(files, form)
 	}
