@@ -60,12 +60,12 @@ type (
 		errBackground chan error
 	}
 
-	// RequestOption specifies a request options, like params, form, etc.
-	RequestOption func(*Request) *Request
+	// RequestOption specifies a request options, used to setup Request.
+	RequestOption func(req *Request) *Request
 
 	// RequestInterceptor specifies a request interceptor.
 	// If the returned error isn't nil, sreq will abort the request.
-	RequestInterceptor func(*Request) error
+	RequestInterceptor func(req *Request) error
 
 	retry struct {
 		attempts   int

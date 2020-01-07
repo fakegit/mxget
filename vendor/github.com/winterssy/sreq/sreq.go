@@ -14,7 +14,7 @@ import (
 
 const (
 	// Version of sreq.
-	Version = "0.8.6"
+	Version = "0.8.7"
 
 	defaultUserAgent = "go-sreq/" + Version
 )
@@ -52,6 +52,9 @@ type (
 	// H is a shortcut for map[string]interface{}, used for JSON unmarshalling.
 	// Do not use it for other purposes!
 	H map[string]interface{}
+
+	// Number is a shortcut for float64.
+	Number float64
 )
 
 func acquireBuffer() *bytes.Buffer {
@@ -157,6 +160,71 @@ func (v Values) Encode() string {
 	return sb.String()
 }
 
+// Float64 converts n to a float64.
+func (n Number) Float64() float64 {
+	return float64(n)
+}
+
+// Float32 converts n to a float32.
+func (n Number) Float32() float32 {
+	return float32(n)
+}
+
+// Int converts n to an int.
+func (n Number) Int() int {
+	return int(n)
+}
+
+// Int64 converts n to an int64.
+func (n Number) Int64() int64 {
+	return int64(n)
+}
+
+// Int32 converts n to an int32.
+func (n Number) Int32() int32 {
+	return int32(n)
+}
+
+// Int16 converts n to an int16.
+func (n Number) Int16() int16 {
+	return int16(n)
+}
+
+// Int8 converts n to an int8.
+func (n Number) Int8() int8 {
+	return int8(n)
+}
+
+// Uint converts n to a uint.
+func (n Number) Uint() uint {
+	return uint(n)
+}
+
+// Uint64 converts n to a uint64.
+func (n Number) Uint64() uint64 {
+	return uint64(n)
+}
+
+// Uint32 converts n to a uint32.
+func (n Number) Uint32() uint32 {
+	return uint32(n)
+}
+
+// Uint16 converts n to a uint16.
+func (n Number) Uint16() uint16 {
+	return uint16(n)
+}
+
+// Uint8 converts n to a uint8.
+func (n Number) Uint8() uint8 {
+	return uint8(n)
+}
+
+// String converts n to a string.
+func (n Number) String() string {
+	return strconv.FormatFloat(n.Float64(), 'f', -1, 64)
+}
+
 // Get gets the interface{} value associated with key.
 func (h H) Get(key string) interface{} {
 	if h == nil {
@@ -177,22 +245,22 @@ func (h H) GetH(key string) H {
 }
 
 // GetStringDefault gets the string value associated with key.
-// If the value is not a string but a number or boolean value, sreq will convert to string.
-// The defaultValue is returned if the key not exists or the value not matches the above data type.
+// The defaultValue is returned if the key not exists.
 func (h H) GetStringDefault(key string, defaultValue string) string {
 	if h == nil {
 		return defaultValue
 	}
 
-	v, ok := h[key]
+	v, ok := h[key].(string)
 	if !ok {
 		return defaultValue
 	}
 
-	return toString(v, defaultValue)
+	return v
 }
 
-// GetString is equivalent to GetStringDefault(key, "")
+// GetString gets the string value associated with key.
+// The zero value is returned if the key not exists.
 func (h H) GetString(key string) string {
 	return h.GetStringDefault(key, "")
 }
@@ -218,9 +286,9 @@ func (h H) GetBool(key string) bool {
 	return h.GetBoolDefault(key, false)
 }
 
-// GetFloat64Default gets the float64 value associated with key.
+// GetNumberDefault gets the Number value associated with key.
 // The defaultValue is returned if the key not exists.
-func (h H) GetFloat64Default(key string, defaultValue float64) float64 {
+func (h H) GetNumberDefault(key string, defaultValue Number) Number {
 	if h == nil {
 		return defaultValue
 	}
@@ -230,160 +298,13 @@ func (h H) GetFloat64Default(key string, defaultValue float64) float64 {
 		return defaultValue
 	}
 
-	return v
+	return Number(v)
 }
 
-// GetFloat64 gets the float64 value associated with key.
+// GetNumber gets the Number value associated with key.
 // The zero value is returned if the key not exists.
-func (h H) GetFloat64(key string) float64 {
-	return h.GetFloat64Default(key, 0)
-}
-
-// GetFloat32Default gets the float32 value associated with key.
-// The defaultValue is returned if the key not exists.
-func (h H) GetFloat32Default(key string, defaultValue float32) float32 {
-	if h == nil {
-		return defaultValue
-	}
-
-	v, ok := h[key].(float64)
-	if !ok {
-		return defaultValue
-	}
-
-	return float32(v)
-}
-
-// GetFloat32 gets the float32 value associated with key.
-// The zero value is returned if the key not exists.
-func (h H) GetFloat32(key string) float32 {
-	return h.GetFloat32Default(key, 0)
-}
-
-// GetIntDefault gets the int value associated with key.
-// The defaultValue is returned if the key not exists.
-func (h H) GetIntDefault(key string, defaultValue int) int {
-	if h == nil {
-		return defaultValue
-	}
-
-	v, ok := h[key].(float64)
-	if !ok {
-		return defaultValue
-	}
-
-	return int(v)
-}
-
-// GetInt gets the int value associated with key.
-// The zero value is returned if the key not exists.
-func (h H) GetInt(key string) int {
-	return h.GetIntDefault(key, 0)
-}
-
-// GetInt64Default gets the int64 value associated with key.
-// The defaultValue is returned if the key not exists.
-func (h H) GetInt64Default(key string, defaultValue int64) int64 {
-	if h == nil {
-		return defaultValue
-	}
-
-	v, ok := h[key].(float64)
-	if !ok {
-		return defaultValue
-	}
-
-	return int64(v)
-}
-
-// GetInt64 gets the int64 value associated with key.
-// The zero value is returned if the key not exists.
-func (h H) GetInt64(key string) int64 {
-	return h.GetInt64Default(key, 0)
-}
-
-// GetInt32Default gets the int32 value associated with key.
-// The defaultValue is returned if the key not exists.
-func (h H) GetInt32Default(key string, defaultValue int32) int32 {
-	if h == nil {
-		return defaultValue
-	}
-
-	v, ok := h[key].(float64)
-	if !ok {
-		return defaultValue
-	}
-
-	return int32(v)
-}
-
-// GetInt32 gets the int32 value associated with key.
-// The zero value is returned if the key not exists.
-func (h H) GetInt32(key string) int32 {
-	return h.GetInt32Default(key, 0)
-}
-
-// GetUintDefault gets the uint value associated with key.
-// The defaultValue is returned if the key not exists.
-func (h H) GetUintDefault(key string, defaultValue uint) uint {
-	if h == nil {
-		return defaultValue
-	}
-
-	v, ok := h[key].(float64)
-	if !ok {
-		return defaultValue
-	}
-
-	return uint(v)
-}
-
-// GetUint gets the uint value associated with key.
-// The zero value is returned if the key not exists.
-func (h H) GetUint(key string) uint {
-	return h.GetUintDefault(key, 0)
-}
-
-// GetUint64Default gets the uint64 value associated with key.
-// The defaultValue is returned if the key not exists.
-func (h H) GetUint64Default(key string, defaultValue uint64) uint64 {
-	if h == nil {
-		return defaultValue
-	}
-
-	v, ok := h[key].(float64)
-	if !ok {
-		return defaultValue
-	}
-
-	return uint64(v)
-}
-
-// GetUint64 gets the uint64 value associated with key.
-// The zero value is returned if the key not exists.
-func (h H) GetUint64(key string) uint64 {
-	return h.GetUint64Default(key, 0)
-}
-
-// GetUint32Default gets the uint32 value associated with key.
-// The defaultValue is returned if the key not exists.
-func (h H) GetUint32Default(key string, defaultValue uint32) uint32 {
-	if h == nil {
-		return defaultValue
-	}
-
-	v, ok := h[key].(float64)
-	if !ok {
-		return defaultValue
-	}
-
-	return uint32(v)
-}
-
-// GetUint32 gets the uint32 value associated with key.
-// The zero value is returned if the key not exists.
-func (h H) GetUint32(key string) uint32 {
-	return h.GetUint32Default(key, 0)
+func (h H) GetNumber(key string) Number {
+	return h.GetNumberDefault(key, Number(0))
 }
 
 // GetSlice gets the []interface{} value associated with key.
@@ -435,97 +356,26 @@ func (h H) GetBoolSlice(key string) []bool {
 	return vs
 }
 
-// GetFloat64Slice gets the []float64 value associated with key.
-func (h H) GetFloat64Slice(key string) []float64 {
+// GetNumberSlice gets the []Number value associated with key.
+func (h H) GetNumberSlice(key string) []Number {
 	v := h.GetSlice(key)
-	vs := make([]float64, 0, len(v))
-
+	vs := make([]Number, 0, len(v))
 	for _, vv := range v {
 		if vv, ok := vv.(float64); ok {
-			vs = append(vs, vv)
+			vs = append(vs, Number(vv))
 		}
 	}
 	return vs
 }
 
-// GetFloat32Slice gets the []float32 value associated with key.
-func (h H) GetFloat32Slice(key string) []float32 {
-	v := h.GetFloat64Slice(key)
-	vs := make([]float32, len(v))
-	for i, vv := range v {
-		vs[i] = float32(vv)
-	}
-	return vs
-}
-
-// GetIntSlice gets the []int value associated with key.
-func (h H) GetIntSlice(key string) []int {
-	v := h.GetFloat64Slice(key)
-	vs := make([]int, len(v))
-	for i, vv := range v {
-		vs[i] = int(vv)
-	}
-	return vs
-}
-
-// GetInt64Slice gets the []int64 value associated with key.
-func (h H) GetInt64Slice(key string) []int64 {
-	v := h.GetFloat64Slice(key)
-	vs := make([]int64, len(v))
-	for i, vv := range v {
-		vs[i] = int64(vv)
-	}
-	return vs
-}
-
-// GetInt32Slice gets the []int32 value associated with key.
-func (h H) GetInt32Slice(key string) []int32 {
-	v := h.GetFloat64Slice(key)
-	vs := make([]int32, len(v))
-	for i, vv := range v {
-		vs[i] = int32(vv)
-	}
-	return vs
-}
-
-// GetUintSlice gets the []uint value associated with key.
-func (h H) GetUintSlice(key string) []uint {
-	v := h.GetFloat64Slice(key)
-	vs := make([]uint, len(v))
-	for i, vv := range v {
-		vs[i] = uint(vv)
-	}
-	return vs
-}
-
-// GetUint64Slice gets the []uint64 value associated with key.
-func (h H) GetUint64Slice(key string) []uint64 {
-	v := h.GetFloat64Slice(key)
-	vs := make([]uint64, len(v))
-	for i, vv := range v {
-		vs[i] = uint64(vv)
-	}
-	return vs
-}
-
-// GetUint32Slice gets the []uint32 value associated with key.
-func (h H) GetUint32Slice(key string) []uint32 {
-	v := h.GetFloat64Slice(key)
-	vs := make([]uint32, len(v))
-	for i, vv := range v {
-		vs[i] = uint32(vv)
-	}
-	return vs
-}
-
-// Encode encodes h into v.
-func (h H) Encode(v interface{}) error {
+// Decode encodes h to JSON and then decodes to the output structure.
+func (h H) Decode(output interface{}) error {
 	b, err := jsonMarshal(h, "", "", false)
 	if err != nil {
 		return err
 	}
 
-	return json.Unmarshal(b, v)
+	return json.Unmarshal(b, output)
 }
 
 // String returns the JSON-encoded text representation of h.

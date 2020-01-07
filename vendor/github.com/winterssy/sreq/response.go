@@ -22,7 +22,7 @@ type (
 	}
 
 	// ResponseInterceptor specifies a response interceptor.
-	ResponseInterceptor func(*Response) error
+	ResponseInterceptor func(resp *Response) error
 )
 
 // Raw returns the raw HTTP response.
