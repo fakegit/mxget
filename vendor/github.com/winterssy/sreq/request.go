@@ -12,7 +12,6 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
-	neturl "net/url"
 	"strings"
 	"time"
 )
@@ -55,6 +54,7 @@ type (
 		params        Params
 		form          Form
 		headers       Headers
+		cookies       Cookies
 		retry         *retry
 		ctx           context.Context
 		errBackground chan error
@@ -83,17 +83,18 @@ func (req *Request) raiseError(cause string, err error) {
 
 // NewRequest returns a new Request given a method, URL.
 func NewRequest(method string, url string) *Request {
-	req := new(Request)
 	rawRequest, err := http.NewRequest(method, url, nil)
 	if err != nil {
-		req.raiseError("NewRequest", err)
-		return req
+		return &Request{Err: err}
 	}
 
-	req.RawRequest = rawRequest
-	req.params = make(Params)
-	req.form = make(Form)
-	req.headers = make(Headers)
+	req := &Request{
+		RawRequest: rawRequest,
+		params:     make(Params),
+		form:       make(Form),
+		headers:    make(Headers),
+		cookies:    make(Cookies),
+	}
 	req.SetUserAgent(defaultUserAgent)
 	return req
 }
@@ -163,37 +164,32 @@ func (req *Request) setup() {
 		req.setForm()
 	}
 	req.setHeaders()
+	req.setCookies()
 }
 
 func (req *Request) setQuery() {
-	query := req.RawRequest.URL.Query()
-	params := req.params.Clone()
-	for k, vs := range params {
-		for _, v := range vs {
-			query.Add(k, v)
-		}
+	for k, v := range req.RawRequest.URL.Query() {
+		req.params.SetDefault(k, v)
 	}
-	req.RawRequest.URL.RawQuery = query.Encode()
+	req.RawRequest.URL.RawQuery = req.params.Encode(true)
 }
 
 func (req *Request) setForm() {
-	form := req.form.Clone()
-	data := make(neturl.Values, len(form))
-	for k, vs := range form {
-		for _, v := range vs {
-			data.Add(k, v)
-		}
-	}
-	req.setBody(strings.NewReader(data.Encode()))
+	req.setBody(strings.NewReader(req.form.Encode(true)))
 	req.SetContentType("application/x-www-form-urlencoded")
 }
 
 func (req *Request) setHeaders() {
-	headers := req.headers.Clone()
-	for k, vs := range headers {
+	for k, vs := range req.headers.Decode() {
 		for _, v := range vs {
 			req.RawRequest.Header.Add(k, v)
 		}
+	}
+}
+
+func (req *Request) setCookies() {
+	for _, c := range req.cookies.Decode() {
+		req.RawRequest.AddCookie(c)
 	}
 }
 
@@ -371,7 +367,7 @@ func setMultipartFiles(mw *multipart.Writer, files Files) error {
 }
 
 func setMultipartForm(mw *multipart.Writer, form Form) {
-	for k, vs := range form.Clone() {
+	for k, vs := range form.Decode() {
 		for _, v := range vs {
 			mw.WriteField(k, v)
 		}
@@ -412,14 +408,12 @@ func (req *Request) SetMultipart(files Files, form Form) *Request {
 }
 
 // SetCookies sets cookies for the HTTP request.
-func (req *Request) SetCookies(cookies ...*http.Cookie) *Request {
+func (req *Request) SetCookies(cookies Cookies) *Request {
 	if req.Err != nil {
 		return req
 	}
 
-	for _, c := range cookies {
-		req.RawRequest.AddCookie(c)
-	}
+	req.cookies.Update(cookies)
 	return req
 }
 
@@ -560,9 +554,9 @@ func WithMultipart(files Files, form Form) RequestOption {
 }
 
 // WithCookies appends cookies for the HTTP request.
-func WithCookies(cookies ...*http.Cookie) RequestOption {
+func WithCookies(cookies Cookies) RequestOption {
 	return func(req *Request) *Request {
-		return req.SetCookies(cookies...)
+		return req.SetCookies(cookies)
 	}
 }
 

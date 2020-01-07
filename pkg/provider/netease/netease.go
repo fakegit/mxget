@@ -2,7 +2,6 @@ package netease
 
 import (
 	"context"
-	"net/http"
 	"strconv"
 	"strings"
 
@@ -33,7 +32,7 @@ const (
 var (
 	std = New(request.DefaultClient)
 
-	cookie *http.Cookie
+	cookies sreq.Cookies
 
 	defaultHeaders = sreq.Headers{
 		"Origin":  "https://music.163.com",
@@ -163,7 +162,7 @@ type (
 )
 
 func init() {
-	cookie, _ = createCookie()
+	cookies, _ = createCookie()
 }
 
 func New(client *sreq.Client) *API {
@@ -223,10 +222,10 @@ func (a *API) Request(method string, url string, opts ...sreq.RequestOption) *sr
 		sreq.WithHeaders(defaultHeaders),
 	)
 
-	// 如果已经登录，不需要额外设置cookie，cookie jar会自动管理
+	// 如果已经登录，不需要额外设置cookies，cookie jar会自动管理
 	_, err := a.Client.FilterCookie(url, "MUSIC_U")
 	if err != nil {
-		opts = append(opts, sreq.WithCookies(cookie))
+		opts = append(opts, sreq.WithCookies(cookies))
 	}
 
 	return a.Client.Send(method, url, opts...)

@@ -30,14 +30,14 @@ func aesCBCEncrypt(songId string) sreq.Params {
 		"ts":     time.Now().UnixNano() / 1e6,
 	}
 
-	e := base64.StdEncoding.EncodeToString(cryptography.AESCBCEncrypt([]byte(params.Encode()), []byte(key), []byte(IV)))
+	e := base64.StdEncoding.EncodeToString(cryptography.AESCBCEncrypt([]byte(params.Encode(false)), []byte(key), []byte(IV)))
 	params.Set("e", e)
 
 	return params
 }
 
 func signPayload(params sreq.Params) sreq.Params {
-	q := params.Encode()
+	q := params.Encode(false)
 	ts := time.Now().Unix()
 	r := fmt.Sprintf("baidu_taihe_music_secret_key%d", ts)
 	key := fmt.Sprintf("%x", md5.Sum([]byte(r)))[8:24]

@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
-	"net/http"
 	"strings"
 	"time"
 
@@ -71,15 +70,14 @@ func BytesReverse(b []byte) []byte {
 	return b
 }
 
-func createCookie() (*http.Cookie, error) {
+func createCookie() (sreq.Cookies, error) {
 	b := make([]byte, 16)
 	_, err := rand.Read(b)
 	if err != nil {
 		return nil, err
 	}
 
-	return &http.Cookie{
-		Name:  "_ntes_nuid",
-		Value: hex.EncodeToString(b),
+	return sreq.Cookies{
+		"_ntes_nuid": hex.EncodeToString(b),
 	}, nil
 }

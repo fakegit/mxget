@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"net/http"
+	neturl "net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -14,7 +16,7 @@ import (
 
 const (
 	// Version of sreq.
-	Version = "0.8.7"
+	Version = "0.8.8"
 
 	defaultUserAgent = "go-sreq/" + Version
 )
@@ -36,6 +38,9 @@ type (
 
 	// Headers is an alias of Values, used for request headers.
 	Headers = Values
+
+	// Cookies is a shortcut for map[string]string, used for request cookies.
+	Cookies map[string]string
 
 	// Files maps a string key to a *File type value, used for files of multipart payload.
 	Files map[string]*File
@@ -68,13 +73,10 @@ func releaseBuffer(buf *bytes.Buffer) {
 	}
 }
 
-// Get gets the value associated with key.
-func (v Values) Get(key string) interface{} {
-	if v == nil {
-		return nil
-	}
-
-	return v[key]
+// Get gets the equivalent request query parameter, form data or header value associated with key.
+func (v Values) Get(key string) []string {
+	vv := v.Decode()
+	return vv[key]
 }
 
 // Set sets the key to value. It replaces any existing values.
@@ -90,7 +92,7 @@ func (v Values) SetDefault(key string, value interface{}) {
 	}
 }
 
-// Del deletes the values associated with key.
+// Del deletes the value associated with key.
 func (v Values) Del(key string) {
 	delete(v, key)
 }
@@ -109,36 +111,25 @@ func (v Values) Merge(v2 Values) {
 	}
 }
 
-// Clone returns a copy of the actual data to be used for request query parameters, form data or headers from v.
-func (v Values) Clone() map[string][]string {
-	if v == nil {
-		return nil
-	}
-
-	res := make(map[string][]string, len(v))
+// Decode translates and returns the equivalent request query parameters, form data or headers.
+func (v Values) Decode() map[string][]string {
+	vv := make(map[string][]string, len(v))
 	for k := range v {
 		switch v := v[k].(type) {
 		case []string:
 			vs := make([]string, len(v))
 			copy(vs, v)
-			res[k] = vs
+			vv[k] = vs
 		default:
-			res[k] = []string{toString(v, "")}
+			vv[k] = []string{toString(v)}
 		}
 	}
-	return res
+	return vv
 }
 
-// Marshal returns the JSON encoding of v.
-func (v Values) Marshal() string {
-	s := toJSON(v, "", "", false)
-	return strings.TrimSuffix(s, "\n")
-}
-
-// Encode encodes v into URL-unescaped form sorted by key.
-// Only use when you consider Values as request query parameters or form data.
-func (v Values) Encode() string {
-	vv := v.Clone()
+// Encode encodes v into URL form sorted by key when v is considered as request query parameters or form data.
+func (v Values) Encode(urlEscaped bool) string {
+	vv := v.Decode()
 	keys := make([]string, 0, len(vv))
 	for k := range v {
 		keys = append(keys, k)
@@ -152,12 +143,179 @@ func (v Values) Encode() string {
 			if sb.Len() > 0 {
 				sb.WriteByte('&')
 			}
-			sb.WriteString(k)
+
+			if urlEscaped {
+				sb.WriteString(neturl.QueryEscape(k))
+			} else {
+				sb.WriteString(k)
+			}
 			sb.WriteByte('=')
-			sb.WriteString(v)
+			if urlEscaped {
+				sb.WriteString(neturl.QueryEscape(v))
+			} else {
+				sb.WriteString(v)
+			}
 		}
 	}
 	return sb.String()
+}
+
+// Marshal returns the JSON encoding of v.
+func (v Values) Marshal() string {
+	s := toJSON(v, "", "", false)
+	return strings.TrimSuffix(s, "\n")
+}
+
+// Get gets the equivalent request cookie associated with key.
+func (c Cookies) Get(name string) *http.Cookie {
+	if c == nil {
+		return nil
+	}
+
+	value, ok := c[name]
+	if !ok {
+		return nil
+	}
+
+	return &http.Cookie{
+		Name:  name,
+		Value: value,
+	}
+}
+
+// Set sets the key to value. It replaces any existing values.
+func (c Cookies) Set(name string, value string) {
+	c[name] = value
+}
+
+// SetDefault sets the key to value if the value not exists.
+func (c Cookies) SetDefault(name string, value string) {
+	_, ok := c[name]
+	if !ok {
+		c.Set(name, value)
+	}
+}
+
+// Del deletes the value associated with key.
+func (c Cookies) Del(name string) {
+	delete(c, name)
+}
+
+// Update merges c2 into c. It replaces any existing values.
+func (c Cookies) Update(c2 Cookies) {
+	for name, value := range c2 {
+		c.Set(name, value)
+	}
+}
+
+// Merge merges c2 into c. It keeps the existing values.
+func (c Cookies) Merge(c2 Cookies) {
+	for name, value := range c2 {
+		c.SetDefault(name, value)
+	}
+}
+
+// Clone returns a copy of c or nil if c is nil.
+func (c Cookies) Clone() Cookies {
+	if c == nil {
+		return nil
+	}
+
+	c2 := make(Cookies, len(c))
+	for name, value := range c {
+		c2.Set(name, value)
+	}
+	return c2
+}
+
+// Decode translates and returns the equivalent request cookies.
+func (c Cookies) Decode() []*http.Cookie {
+	cookies := make([]*http.Cookie, 0, len(c))
+	for name, value := range c {
+		cookies = append(cookies, &http.Cookie{
+			Name:  name,
+			Value: value,
+		})
+	}
+	return cookies
+}
+
+// Get gets the value associated with key.
+func (f Files) Get(key string) *File {
+	if f == nil {
+		return nil
+	}
+
+	return f[key]
+}
+
+// Set sets the key to value. It replaces any existing values.
+func (f Files) Set(key string, value *File) {
+	f[key] = value
+}
+
+// Del deletes the value associated with key.
+func (f Files) Del(key string) {
+	delete(f, key)
+}
+
+// NewFile returns a *File instance given a filename and its body.
+func NewFile(filename string, body io.Reader) *File {
+	return &File{
+		Filename: filename,
+		Body:     body,
+	}
+}
+
+// SetFilename sets Filename field value of f.
+func (f *File) SetFilename(filename string) *File {
+	f.Filename = filename
+	return f
+}
+
+// SetMIME sets MIME field value of f.
+func (f *File) SetMIME(mime string) *File {
+	f.MIME = mime
+	return f
+}
+
+// Read implements Reader interface.
+func (f *File) Read(p []byte) (int, error) {
+	if f.Body == nil {
+		return 0, io.EOF
+	}
+	return f.Body.Read(p)
+}
+
+// Close implements Closer interface.
+func (f *File) Close() error {
+	rc, ok := f.Body.(io.Closer)
+	if !ok || rc == nil {
+		return nil
+	}
+
+	return rc.Close()
+}
+
+// Open opens the named file and returns a *File instance.
+func Open(filename string) (*File, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewFile(filepath.Base(filename), file), nil
+}
+
+// MustOpen opens the named file and returns a *File instance.
+// If there is an error, it will panic.
+func MustOpen(filename string) *File {
+	file, err := Open(filename)
+	if err != nil {
+		panic(err)
+	}
+
+	return file
 }
 
 // Float64 converts n to a float64.
@@ -383,85 +541,7 @@ func (h H) String() string {
 	return toJSON(h, "", "\t", false)
 }
 
-// Get gets the value associated with key.
-func (f Files) Get(key string) *File {
-	if f == nil {
-		return nil
-	}
-
-	return f[key]
-}
-
-// Set sets the key to value. It replaces any existing values.
-func (f Files) Set(key string, value *File) {
-	f[key] = value
-}
-
-// Del deletes the values associated with key.
-func (f Files) Del(key string) {
-	delete(f, key)
-}
-
-// NewFile returns a *File instance given a filename and its body.
-func NewFile(filename string, body io.Reader) *File {
-	return &File{
-		Filename: filename,
-		Body:     body,
-	}
-}
-
-// SetFilename sets Filename field value of f.
-func (f *File) SetFilename(filename string) *File {
-	f.Filename = filename
-	return f
-}
-
-// SetMIME sets MIME field value of f.
-func (f *File) SetMIME(mime string) *File {
-	f.MIME = mime
-	return f
-}
-
-// Read implements Reader interface.
-func (f *File) Read(p []byte) (int, error) {
-	if f.Body == nil {
-		return 0, io.EOF
-	}
-	return f.Body.Read(p)
-}
-
-// Close implements Closer interface.
-func (f *File) Close() error {
-	rc, ok := f.Body.(io.Closer)
-	if !ok || rc == nil {
-		return nil
-	}
-
-	return rc.Close()
-}
-
-// Open opens the named file and returns a *File instance.
-func Open(filename string) (*File, error) {
-	file, err := os.Open(filename)
-	if err != nil {
-		return nil, err
-	}
-
-	return NewFile(filepath.Base(filename), file), nil
-}
-
-// MustOpen opens the named file and returns a *File instance.
-// If there is an error, it will panic.
-func MustOpen(filename string) *File {
-	file, err := Open(filename)
-	if err != nil {
-		panic(err)
-	}
-
-	return file
-}
-
-func toString(v interface{}, defaultValue string) string {
+func toString(v interface{}) string {
 	switch v := v.(type) {
 	case string:
 		return v
@@ -498,7 +578,7 @@ func toString(v interface{}, defaultValue string) string {
 	}:
 		return v.String()
 	default:
-		return defaultValue
+		return ""
 	}
 }
 

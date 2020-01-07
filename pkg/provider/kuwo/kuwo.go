@@ -2,7 +2,6 @@ package kuwo
 
 import (
 	"context"
-	"net/http"
 	"strconv"
 	"strings"
 
@@ -180,9 +179,8 @@ func (a *API) Request(method string, url string, opts ...sreq.RequestOption) *sr
 	csrf := "0"
 	cookie, err := a.Client.FilterCookie(url, "kw_token")
 	if err != nil {
-		opts = append(opts, sreq.WithCookies(&http.Cookie{
-			Name:  "kw_token",
-			Value: csrf,
+		opts = append(opts, sreq.WithCookies(sreq.Cookies{
+			"kw_token": csrf,
 		}))
 	} else {
 		csrf = cookie.Value
