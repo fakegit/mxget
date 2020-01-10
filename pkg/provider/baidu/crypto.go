@@ -30,7 +30,8 @@ func aesCBCEncrypt(songId string) sreq.Params {
 		"ts":     time.Now().UnixNano() / 1e6,
 	}
 
-	e := base64.StdEncoding.EncodeToString(cryptography.AESCBCEncrypt([]byte(params.Encode(false)), []byte(key), []byte(IV)))
+	e := base64.StdEncoding.EncodeToString(cryptography.
+		AESCBCEncrypt([]byte(params.Encode(false)), []byte(key), []byte(IV)))
 	params.Set("e", e)
 
 	return params

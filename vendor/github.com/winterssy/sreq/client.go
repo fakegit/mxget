@@ -33,6 +33,7 @@ type (
 		RawClient *http.Client
 		Err       error
 
+		retry                *retry
 		requestInterceptors  []RequestInterceptor
 		responseInterceptors []ResponseInterceptor
 	}
@@ -51,6 +52,7 @@ func New() *Client {
 	}
 	client := &Client{
 		RawClient: rawClient,
+		retry:     defaultRetry,
 	}
 	return client
 }
@@ -65,10 +67,19 @@ func (c *Client) httpTransport() (*http.Transport, error) {
 }
 
 func (c *Client) raiseError(cause string, err error) {
+	if c.Err != nil {
+		return
+	}
+
 	c.Err = &ClientError{
 		Cause: cause,
 		Err:   err,
 	}
+}
+
+// Raw returns the raw HTTP client.
+func Raw() (*http.Client, error) {
+	return GlobalClient.Raw()
 }
 
 // Raw returns the raw HTTP client.
@@ -83,10 +94,6 @@ func SetTransport(transport http.RoundTripper) *Client {
 
 // SetTransport sets transport of the HTTP client.
 func (c *Client) SetTransport(transport http.RoundTripper) *Client {
-	if c.Err != nil {
-		return c
-	}
-
 	c.RawClient.Transport = transport
 	return c
 }
@@ -98,10 +105,6 @@ func SetRedirect(policy func(req *http.Request, via []*http.Request) error) *Cli
 
 // SetRedirect sets policy of the HTTP client for handling redirects.
 func (c *Client) SetRedirect(policy func(req *http.Request, via []*http.Request) error) *Client {
-	if c.Err != nil {
-		return c
-	}
-
 	c.RawClient.CheckRedirect = policy
 	return c
 }
@@ -127,10 +130,6 @@ func SetCookieJar(jar http.CookieJar) *Client {
 
 // SetCookieJar sets cookie jar of the HTTP client.
 func (c *Client) SetCookieJar(jar http.CookieJar) *Client {
-	if c.Err != nil {
-		return c
-	}
-
 	c.RawClient.Jar = jar
 	return c
 }
@@ -154,10 +153,6 @@ func SetTimeout(timeout time.Duration) *Client {
 
 // SetTimeout sets timeout of the HTTP client.
 func (c *Client) SetTimeout(timeout time.Duration) *Client {
-	if c.Err != nil {
-		return c
-	}
-
 	c.RawClient.Timeout = timeout
 	return c
 }
@@ -169,10 +164,6 @@ func SetProxy(proxy func(*http.Request) (*neturl.URL, error)) *Client {
 
 // SetProxy sets proxy of the HTTP client.
 func (c *Client) SetProxy(proxy func(*http.Request) (*neturl.URL, error)) *Client {
-	if c.Err != nil {
-		return c
-	}
-
 	t, err := c.httpTransport()
 	if err != nil {
 		c.raiseError("SetProxy", err)
@@ -191,10 +182,6 @@ func SetProxyFromURL(url string) *Client {
 
 // SetProxyFromURL sets proxy of the HTTP client from a url.
 func (c *Client) SetProxyFromURL(url string) *Client {
-	if c.Err != nil {
-		return c
-	}
-
 	fixedURL, err := neturl.Parse(url)
 	if err != nil {
 		c.raiseError("SetProxyFromURL", err)
@@ -220,10 +207,6 @@ func SetTLSClientConfig(config *tls.Config) *Client {
 
 // SetTLSClientConfig sets TLS configuration of the HTTP client.
 func (c *Client) SetTLSClientConfig(config *tls.Config) *Client {
-	if c.Err != nil {
-		return c
-	}
-
 	t, err := c.httpTransport()
 	if err != nil {
 		c.raiseError("SetTLSClientConfig", err)
@@ -242,10 +225,6 @@ func AppendClientCerts(certs ...tls.Certificate) *Client {
 
 // AppendClientCerts appends client certificates to the HTTP client.
 func (c *Client) AppendClientCerts(certs ...tls.Certificate) *Client {
-	if c.Err != nil {
-		return c
-	}
-
 	t, err := c.httpTransport()
 	if err != nil {
 		c.raiseError("AppendClientCerts", err)
@@ -268,10 +247,6 @@ func AppendRootCerts(pemFile string) *Client {
 
 // AppendRootCerts appends root certificates from a pem file to the HTTP client.
 func (c *Client) AppendRootCerts(pemFile string) *Client {
-	if c.Err != nil {
-		return c
-	}
-
 	pemCerts, err := ioutil.ReadFile(pemFile)
 	if err != nil {
 		c.raiseError("AppendRootCerts", err)
@@ -302,10 +277,6 @@ func DisableVerify() *Client {
 
 // DisableVerify makes the HTTP client not verify the server's TLS certificate.
 func (c *Client) DisableVerify() *Client {
-	if c.Err != nil {
-		return c
-	}
-
 	t, err := c.httpTransport()
 	if err != nil {
 		c.raiseError("DisableVerify", err)
@@ -328,10 +299,6 @@ func SetCookies(url string, cookies ...*http.Cookie) *Client {
 
 // SetCookies sets cookies to cookie jar for the given URL.
 func (c *Client) SetCookies(url string, cookies ...*http.Cookie) *Client {
-	if c.Err != nil {
-		return c
-	}
-
 	if c.RawClient.Jar == nil {
 		c.raiseError("SetCookies", ErrNilCookieJar)
 		return c
@@ -347,6 +314,19 @@ func (c *Client) SetCookies(url string, cookies ...*http.Cookie) *Client {
 	return c
 }
 
+// SetRetry sets retry policy of the client.
+func SetRetry(opts ...RetryOption) *Client {
+	return GlobalClient.SetRetry(opts...)
+}
+
+// SetRetry sets retry policy of the client.
+func (c *Client) SetRetry(opts ...RetryOption) *Client {
+	for _, opt := range opts {
+		opt(c.retry)
+	}
+	return c
+}
+
 // UseRequestInterceptors appends request interceptors of the client.
 func UseRequestInterceptors(interceptors ...RequestInterceptor) *Client {
 	return GlobalClient.UseRequestInterceptors(interceptors...)
@@ -354,10 +334,6 @@ func UseRequestInterceptors(interceptors ...RequestInterceptor) *Client {
 
 // UseRequestInterceptors appends request interceptors of the client.
 func (c *Client) UseRequestInterceptors(interceptors ...RequestInterceptor) *Client {
-	if c.Err != nil {
-		return c
-	}
-
 	c.requestInterceptors = append(c.requestInterceptors, interceptors...)
 	return c
 }
@@ -369,10 +345,6 @@ func UseResponseInterceptors(interceptors ...ResponseInterceptor) *Client {
 
 // UseResponseInterceptors appends response interceptors of the client.
 func (c *Client) UseResponseInterceptors(interceptors ...ResponseInterceptor) *Client {
-	if c.Err != nil {
-		return c
-	}
-
 	c.responseInterceptors = append(c.responseInterceptors, interceptors...)
 	return c
 }
@@ -446,7 +418,7 @@ func Send(method string, url string, opts ...RequestOption) *Response {
 func (c *Client) Send(method string, url string, opts ...RequestOption) *Response {
 	req := NewRequest(method, url)
 	for _, opt := range opts {
-		req = opt(req)
+		opt(req)
 	}
 	return c.Do(req)
 }
@@ -505,54 +477,33 @@ func (c *Client) Do(req *Request) *Response {
 		return resp
 	}
 
-	if req.Err != nil {
-		resp.Err = req.Err
-		return resp
-	}
-
-	err := c.onBeforeRequest(req)
-	if err != nil {
+	c.onBeforeRequest(req)
+	if err := req.setup(); err != nil {
 		resp.Err = err
 		return resp
 	}
 
-	req.setup()
 	c.doWithRetry(req, resp)
 	c.onAfterResponse(resp)
 	return resp
 }
 
-func (c *Client) onBeforeRequest(req *Request) error {
+func (c *Client) onBeforeRequest(req *Request) {
+	if req.Err != nil {
+		return
+	}
+
 	var err error
 	for _, interceptor := range c.requestInterceptors {
 		if err = interceptor(req); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (c *Client) onAfterResponse(resp *Response) {
-	var err error
-	for _, interceptor := range c.responseInterceptors {
-		if err = interceptor(resp); err != nil {
-			resp.Err = err
+			req.Err = err
 			return
 		}
 	}
 }
 
-var noRetry = &retry{
-	attempts: 1,
-}
-
 func (c *Client) doWithRetry(req *Request, resp *Response) {
 	allowRetry := req.RawRequest.Body == nil || req.RawRequest.GetBody != nil
-	retry := noRetry
-	if req.retry != nil && allowRetry {
-		retry = req.retry
-	}
 
 	ctx := req.ctx
 	if ctx == nil {
@@ -561,19 +512,19 @@ func (c *Client) doWithRetry(req *Request, resp *Response) {
 	req.RawRequest = req.RawRequest.WithContext(ctx)
 
 	var err error
-	for i := 0; i < retry.attempts; i++ {
+	for i := 0; i < c.retry.maxAttempts; i++ {
 		resp.RawResponse, resp.Err = c.do(req)
 		if err = ctx.Err(); err != nil {
 			resp.Err = err
 			return
 		}
 
-		if i == retry.attempts-1 {
+		if i == c.retry.maxAttempts-1 || !allowRetry {
 			return
 		}
 
 		shouldRetry := resp.Err != nil
-		for _, condition := range retry.conditions {
+		for _, condition := range c.retry.triggers {
 			shouldRetry = condition(resp)
 			if shouldRetry {
 				break
@@ -588,7 +539,7 @@ func (c *Client) doWithRetry(req *Request, resp *Response) {
 		}
 
 		select {
-		case <-time.After(retry.delay):
+		case <-time.After(c.retry.backoff(c.retry.waitTime, c.retry.maxWaitTime, i, resp)):
 		case <-ctx.Done():
 			resp.Err = ctx.Err()
 			return
@@ -619,4 +570,14 @@ func (c *Client) do(req *Request) (*http.Response, error) {
 	}
 
 	return rawResponse, nil
+}
+
+func (c *Client) onAfterResponse(resp *Response) {
+	var err error
+	for _, interceptor := range c.responseInterceptors {
+		if err = interceptor(resp); err != nil {
+			resp.Err = err
+			return
+		}
+	}
 }

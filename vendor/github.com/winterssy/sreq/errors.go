@@ -13,7 +13,7 @@ var (
 	ErrNilCookieJar = errors.New("nil cookie jar")
 
 	// ErrNoCookie can be used when a cookie not found in the HTTP response or cookie jar.
-	ErrNoCookie = errors.New("sreq: named cookie not present")
+	ErrNoCookie = errors.New("named cookie not present")
 )
 
 type (

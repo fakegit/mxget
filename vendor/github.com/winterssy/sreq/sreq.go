@@ -12,11 +12,12 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unsafe"
 )
 
 const (
 	// Version of sreq.
-	Version = "0.8.8"
+	Version = "0.8.15"
 
 	defaultUserAgent = "go-sreq/" + Version
 )
@@ -33,7 +34,7 @@ type (
 	// Params is an alias of Values, used for for request query parameters.
 	Params = Values
 
-	// Form is an alias of Values, used for request form values.
+	// Form is an alias of Values, used for request form data.
 	Form = Values
 
 	// Headers is an alias of Values, used for request headers.
@@ -75,8 +76,25 @@ func releaseBuffer(buf *bytes.Buffer) {
 
 // Get gets the equivalent request query parameter, form data or header value associated with key.
 func (v Values) Get(key string) []string {
-	vv := v.Decode()
-	return vv[key]
+	value, ok := v[key]
+	if !ok {
+		return nil
+	}
+
+	switch vv := value.(type) {
+	case []string:
+		vs := make([]string, len(vv))
+		copy(vs, vv)
+		return vs
+	default:
+		return []string{toString(vv)}
+	}
+}
+
+// Has checks if a key exists.
+func (v Values) Has(key string) bool {
+	_, ok := v[key]
+	return ok
 }
 
 // Set sets the key to value. It replaces any existing values.
@@ -86,8 +104,7 @@ func (v Values) Set(key string, value interface{}) {
 
 // SetDefault sets the key to value if the value not exists.
 func (v Values) SetDefault(key string, value interface{}) {
-	_, ok := v[key]
-	if !ok {
+	if !v.Has(key) {
 		v.Set(key, value)
 	}
 }
@@ -111,18 +128,11 @@ func (v Values) Merge(v2 Values) {
 	}
 }
 
-// Decode translates and returns the equivalent request query parameters, form data or headers.
+// Decode translates v and returns the equivalent request query parameters, form data or headers.
 func (v Values) Decode() map[string][]string {
 	vv := make(map[string][]string, len(v))
 	for k := range v {
-		switch v := v[k].(type) {
-		case []string:
-			vs := make([]string, len(v))
-			copy(vs, v)
-			vv[k] = vs
-		default:
-			vv[k] = []string{toString(v)}
-		}
+		vv[k] = v.Get(k)
 	}
 	return vv
 }
@@ -145,16 +155,13 @@ func (v Values) Encode(urlEscaped bool) string {
 			}
 
 			if urlEscaped {
-				sb.WriteString(neturl.QueryEscape(k))
-			} else {
-				sb.WriteString(k)
+				k = neturl.QueryEscape(k)
+				v = neturl.QueryEscape(v)
 			}
+
+			sb.WriteString(k)
 			sb.WriteByte('=')
-			if urlEscaped {
-				sb.WriteString(neturl.QueryEscape(v))
-			} else {
-				sb.WriteString(v)
-			}
+			sb.WriteString(v)
 		}
 	}
 	return sb.String()
@@ -162,56 +169,56 @@ func (v Values) Encode(urlEscaped bool) string {
 
 // Marshal returns the JSON encoding of v.
 func (v Values) Marshal() string {
-	s := toJSON(v, "", "", false)
-	return strings.TrimSuffix(s, "\n")
+	return toJSON(v, "", "", false)
 }
 
 // Get gets the equivalent request cookie associated with key.
-func (c Cookies) Get(name string) *http.Cookie {
-	if c == nil {
-		return nil
-	}
-
-	value, ok := c[name]
+func (c Cookies) Get(key string) *http.Cookie {
+	value, ok := c[key]
 	if !ok {
 		return nil
 	}
 
 	return &http.Cookie{
-		Name:  name,
+		Name:  key,
 		Value: value,
 	}
 }
 
+// Has checks if a key exists.
+func (c Cookies) Has(key string) bool {
+	_, ok := c[key]
+	return ok
+}
+
 // Set sets the key to value. It replaces any existing values.
-func (c Cookies) Set(name string, value string) {
-	c[name] = value
+func (c Cookies) Set(key string, value string) {
+	c[key] = value
 }
 
 // SetDefault sets the key to value if the value not exists.
-func (c Cookies) SetDefault(name string, value string) {
-	_, ok := c[name]
-	if !ok {
-		c.Set(name, value)
+func (c Cookies) SetDefault(key string, value string) {
+	if !c.Has(key) {
+		c.Set(key, value)
 	}
 }
 
 // Del deletes the value associated with key.
-func (c Cookies) Del(name string) {
-	delete(c, name)
+func (c Cookies) Del(key string) {
+	delete(c, key)
 }
 
 // Update merges c2 into c. It replaces any existing values.
 func (c Cookies) Update(c2 Cookies) {
-	for name, value := range c2 {
-		c.Set(name, value)
+	for key, value := range c2 {
+		c.Set(key, value)
 	}
 }
 
 // Merge merges c2 into c. It keeps the existing values.
 func (c Cookies) Merge(c2 Cookies) {
-	for name, value := range c2 {
-		c.SetDefault(name, value)
+	for key, value := range c2 {
+		c.SetDefault(key, value)
 	}
 }
 
@@ -222,20 +229,17 @@ func (c Cookies) Clone() Cookies {
 	}
 
 	c2 := make(Cookies, len(c))
-	for name, value := range c {
-		c2.Set(name, value)
+	for key, value := range c {
+		c2.Set(key, value)
 	}
 	return c2
 }
 
-// Decode translates and returns the equivalent request cookies.
+// Decode translates c and returns the equivalent request cookies.
 func (c Cookies) Decode() []*http.Cookie {
 	cookies := make([]*http.Cookie, 0, len(c))
-	for name, value := range c {
-		cookies = append(cookies, &http.Cookie{
-			Name:  name,
-			Value: value,
-		})
+	for k := range c {
+		cookies = append(cookies, c.Get(k))
 	}
 	return cookies
 }
@@ -392,12 +396,14 @@ func (h H) Get(key string) interface{} {
 	return h[key]
 }
 
+// Has checks if a key exists.
+func (h H) Has(key string) bool {
+	_, ok := h[key]
+	return ok
+}
+
 // GetH gets the H value associated with key.
 func (h H) GetH(key string) H {
-	if h == nil {
-		return nil
-	}
-
 	v, _ := h[key].(map[string]interface{})
 	return v
 }
@@ -405,10 +411,6 @@ func (h H) GetH(key string) H {
 // GetStringDefault gets the string value associated with key.
 // The defaultValue is returned if the key not exists.
 func (h H) GetStringDefault(key string, defaultValue string) string {
-	if h == nil {
-		return defaultValue
-	}
-
 	v, ok := h[key].(string)
 	if !ok {
 		return defaultValue
@@ -426,10 +428,6 @@ func (h H) GetString(key string) string {
 // GetBoolDefault gets the bool value associated with key.
 // The defaultValue is returned if the key not exists.
 func (h H) GetBoolDefault(key string, defaultValue bool) bool {
-	if h == nil {
-		return defaultValue
-	}
-
 	v, ok := h[key].(bool)
 	if !ok {
 		return defaultValue
@@ -447,10 +445,6 @@ func (h H) GetBool(key string) bool {
 // GetNumberDefault gets the Number value associated with key.
 // The defaultValue is returned if the key not exists.
 func (h H) GetNumberDefault(key string, defaultValue Number) Number {
-	if h == nil {
-		return defaultValue
-	}
-
 	v, ok := h[key].(float64)
 	if !ok {
 		return defaultValue
@@ -467,10 +461,6 @@ func (h H) GetNumber(key string) Number {
 
 // GetSlice gets the []interface{} value associated with key.
 func (h H) GetSlice(key string) []interface{} {
-	if h == nil {
-		return nil
-	}
-
 	v, _ := h[key].([]interface{})
 	return v
 }
@@ -479,7 +469,6 @@ func (h H) GetSlice(key string) []interface{} {
 func (h H) GetHSlice(key string) []H {
 	v := h.GetSlice(key)
 	vs := make([]H, 0, len(v))
-
 	for _, vv := range v {
 		if vv, ok := vv.(map[string]interface{}); ok {
 			vs = append(vs, vv)
@@ -492,7 +481,6 @@ func (h H) GetHSlice(key string) []H {
 func (h H) GetStringSlice(key string) []string {
 	v := h.GetSlice(key)
 	vs := make([]string, 0, len(v))
-
 	for _, vv := range v {
 		if vv, ok := vv.(string); ok {
 			vs = append(vs, vv)
@@ -505,7 +493,6 @@ func (h H) GetStringSlice(key string) []string {
 func (h H) GetBoolSlice(key string) []bool {
 	v := h.GetSlice(key)
 	vs := make([]bool, 0, len(v))
-
 	for _, vv := range v {
 		if vv, ok := vv.(bool); ok {
 			vs = append(vs, vv)
@@ -527,6 +514,7 @@ func (h H) GetNumberSlice(key string) []Number {
 }
 
 // Decode encodes h to JSON and then decodes to the output structure.
+// output must be a pointer.
 func (h H) Decode(output interface{}) error {
 	b, err := jsonMarshal(h, "", "", false)
 	if err != nil {
@@ -539,6 +527,10 @@ func (h H) Decode(output interface{}) error {
 // String returns the JSON-encoded text representation of h.
 func (h H) String() string {
 	return toJSON(h, "", "\t", false)
+}
+
+func b2s(b []byte) string {
+	return *(*string)(unsafe.Pointer(&b))
 }
 
 func toString(v interface{}) string {
@@ -588,7 +580,7 @@ func toJSON(v interface{}, prefix string, indent string, escapeHTML bool) string
 		return "{}"
 	}
 
-	return string(b)
+	return strings.TrimSuffix(b2s(b), "\n")
 }
 
 func jsonMarshal(v interface{}, prefix string, indent string, escapeHTML bool) ([]byte, error) {

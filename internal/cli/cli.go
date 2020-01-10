@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"time"
 
 	"github.com/bogem/id3v2"
 	"github.com/winterssy/log"
@@ -64,7 +63,6 @@ func ConcurrentDownload(ctx context.Context, client provider.API, savePath strin
 			err := client.
 				Request(sreq.MethodGet, s.Url,
 					sreq.WithContext(ctx),
-					sreq.WithRetry(3, 1*time.Second),
 				).
 				Save(mp3FilePath, 0664)
 			if err != nil {

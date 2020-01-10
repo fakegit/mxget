@@ -47,14 +47,15 @@ func (resp *Response) Content() ([]byte, error) {
 func (resp *Response) Text(e ...encoding.Encoding) (string, error) {
 	b, err := resp.Content()
 	if err != nil || len(e) == 0 {
-		return string(b), err
+		return b2s(b), err
 	}
 
 	b, err = e[0].NewDecoder().Bytes(b)
-	return string(b), err
+	return b2s(b), err
 }
 
 // JSON decodes the HTTP response body and unmarshals its JSON-encoded data into v.
+// v must be a pointer.
 func (resp *Response) JSON(v interface{}) error {
 	if resp.Err != nil {
 		return resp.Err
@@ -233,7 +234,7 @@ handleResponse:
 	}
 
 	if resp.body != nil {
-		fmt.Fprintf(w, "%s\r\n", string(resp.body))
+		fmt.Fprintf(w, "%s\r\n", b2s(resp.body))
 		return nil
 	}
 
