@@ -7,5 +7,10 @@ const (
 )
 
 var (
-	DefaultClient = sreq.New().UseRequestInterceptors(sreq.SetUserAgentDefault(DefaultUserAgent))
+	DefaultClient *sreq.Client
 )
+
+func init() {
+	DefaultClient = sreq.New()
+	DefaultClient.OnBeforeRequest(sreq.SetUserAgentDefault(DefaultUserAgent))
+}

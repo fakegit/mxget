@@ -165,7 +165,8 @@ type (
 
 func New(client *sreq.Client) *API {
 	if client == nil {
-		client = sreq.New().UseRequestInterceptors(sreq.SetUserAgentDefault(request.DefaultUserAgent))
+		client = sreq.New()
+		client.OnBeforeRequest(sreq.SetUserAgentDefault(request.DefaultUserAgent))
 	}
 	return &API{
 		Client: client,
