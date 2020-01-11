@@ -16,24 +16,34 @@ type (
 	// Response wraps the raw HTTP response.
 	Response struct {
 		RawResponse *http.Response
-		Err         error
 
+		err  error
 		body []byte
 	}
 
-	// ResponseInterceptor specifies a response interceptor.
-	ResponseInterceptor func(resp *Response) error
+	// AfterResponseHook specifies an after response hook.
+	AfterResponseHook func(resp *Response)
 )
+
+// RaiseError is used to make sreq consider resp as an error response.
+func (resp *Response) RaiseError(err error) {
+	resp.err = err
+}
+
+// Error returns resp's potential error.
+func (resp *Response) Error() error {
+	return resp.err
+}
 
 // Raw returns the raw HTTP response.
 func (resp *Response) Raw() (*http.Response, error) {
-	return resp.RawResponse, resp.Err
+	return resp.RawResponse, resp.err
 }
 
 // Content decodes the HTTP response body to bytes.
 func (resp *Response) Content() ([]byte, error) {
-	if resp.Err != nil || resp.body != nil {
-		return resp.body, resp.Err
+	if resp.err != nil || resp.body != nil {
+		return resp.body, resp.err
 	}
 	defer resp.RawResponse.Body.Close()
 
@@ -57,8 +67,8 @@ func (resp *Response) Text(e ...encoding.Encoding) (string, error) {
 // JSON decodes the HTTP response body and unmarshals its JSON-encoded data into v.
 // v must be a pointer.
 func (resp *Response) JSON(v interface{}) error {
-	if resp.Err != nil {
-		return resp.Err
+	if resp.err != nil {
+		return resp.err
 	}
 
 	if resp.body != nil {
@@ -84,8 +94,8 @@ func (resp *Response) H() (H, error) {
 
 // XML decodes the HTTP response body and unmarshals its XML-encoded data into v.
 func (resp *Response) XML(v interface{}) error {
-	if resp.Err != nil {
-		return resp.Err
+	if resp.err != nil {
+		return resp.err
 	}
 
 	if resp.body != nil {
@@ -105,8 +115,8 @@ func (resp *Response) XML(v interface{}) error {
 
 // Cookies returns the HTTP response cookies.
 func (resp *Response) Cookies() ([]*http.Cookie, error) {
-	if resp.Err != nil {
-		return nil, resp.Err
+	if resp.err != nil {
+		return nil, resp.err
 	}
 
 	return resp.RawResponse.Cookies(), nil
@@ -135,33 +145,35 @@ func (resp *Response) EnsureStatusOk() *Response {
 
 // EnsureStatus2xx ensures the HTTP response's status code must be 2xx.
 func (resp *Response) EnsureStatus2xx() *Response {
-	if resp.Err != nil {
+	if resp.err != nil {
 		return resp
 	}
 
 	if resp.RawResponse.StatusCode/100 != 2 {
-		resp.Err = fmt.Errorf("sreq: bad status: %d", resp.RawResponse.StatusCode)
+		resp.RaiseError(fmt.Errorf("sreq: response status code expected to be 2xx, but got %d",
+			resp.RawResponse.StatusCode))
 	}
 	return resp
 }
 
-// EnsureStatus ensures the HTTP response's status code must be the code parameter.
+// EnsureStatus ensures the HTTP response's status code must be code.
 func (resp *Response) EnsureStatus(code int) *Response {
-	if resp.Err != nil {
+	if resp.err != nil {
 		return resp
 	}
 
 	if resp.RawResponse.StatusCode != code {
-		resp.Err = fmt.Errorf("sreq: bad status: %d", resp.RawResponse.StatusCode)
+		resp.RaiseError(fmt.Errorf("sreq: response status code expected to be %d, but got %d",
+			code, resp.RawResponse.StatusCode))
 	}
 	return resp
 }
 
 // Save saves the HTTP response into a file.
-// Notes: Save won't make the HTTP response body reusable.
+// Note: Save won't cache the HTTP response body for reuse.
 func (resp *Response) Save(filename string, perm os.FileMode) error {
-	if resp.Err != nil {
-		return resp.Err
+	if resp.err != nil {
+		return resp.err
 	}
 
 	if resp.body != nil {
@@ -181,10 +193,10 @@ func (resp *Response) Save(filename string, perm os.FileMode) error {
 
 // Verbose makes the HTTP request and its response more talkative.
 // It's similar to "curl -v", used for debug.
-// Notes: Verbose won't make the HTTP response body reusable.
+// Note: Verbose won't cache the HTTP response body for reuse.
 func (resp *Response) Verbose(w io.Writer) error {
-	if resp.Err != nil {
-		return resp.Err
+	if resp.err != nil {
+		return resp.err
 	}
 
 	const (

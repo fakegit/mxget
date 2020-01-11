@@ -3,6 +3,7 @@ package sreq
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	neturl "net/url"
@@ -17,12 +18,21 @@ import (
 
 const (
 	// Version of sreq.
-	Version = "0.8.15"
+	Version = "0.8.16"
 
 	defaultUserAgent = "go-sreq/" + Version
 )
 
 var (
+	// ErrUnexpectedTransport can be used if assert a RoundTripper as a non-nil *http.Transport instance failed.
+	ErrUnexpectedTransport = errors.New("current transport isn't a non-nil *http.Transport instance")
+
+	// ErrNilCookieJar can be used when the cookie jar is nil.
+	ErrNilCookieJar = errors.New("nil cookie jar")
+
+	// ErrNoCookie can be used when a cookie not found in the HTTP response or cookie jar.
+	ErrNoCookie = errors.New("named cookie not present")
+
 	bufPool = &sync.Pool{New: func() interface{} { return &bytes.Buffer{} }}
 )
 

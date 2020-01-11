@@ -12,15 +12,6 @@ const (
 	defaultMaxWaitTime = 30 * time.Second
 )
 
-var (
-	defaultRetry = &retry{
-		maxAttempts: defaultMaxAttempts,
-		waitTime:    defaultWaitTime,
-		maxWaitTime: defaultMaxWaitTime,
-		backoff:     DefaultBackoff,
-	}
-)
-
 type (
 	// Backoff specifies a policy for how long to wait between retries.
 	// It is called after a failing request to determine the amount of time

@@ -2,7 +2,7 @@
 
 **[sreq](https://godoc.org/github.com/winterssy/sreq)** is a simple, user-friendly and concurrent safe HTTP request library for Go, inspired by Python **[requests](https://requests.readthedocs.io)**.
 
-![Test](https://img.shields.io/github/workflow/status/winterssy/sreq/Test/master?label=Test&logo=appveyor) ![codecov](https://codecov.io/gh/winterssy/sreq/branch/master/graph/badge.svg) ![Go Report Card](https://goreportcard.com/badge/github.com/winterssy/sreq) [![GoDoc](https://godoc.org/github.com/winterssy/sreq?status.svg)](https://godoc.org/github.com/winterssy/sreq) [![License](https://img.shields.io/github/license/winterssy/sreq.svg)](LICENSE)
+![Test](https://img.shields.io/github/workflow/status/winterssy/sreq/Test/master?label=Test&logo=appveyor) ![codecov](https://codecov.io/gh/winterssy/sreq/branch/master/graph/badge.svg) [![Go Report Card](https://goreportcard.com/badge/github.com/winterssy/sreq)](https://goreportcard.com/report/github.com/winterssy/sreq) [![GoDoc](https://godoc.org/github.com/winterssy/sreq?status.svg)](https://godoc.org/github.com/winterssy/sreq) [![License](https://img.shields.io/github/license/winterssy/sreq.svg)](LICENSE)
 
 ## Notes
 
@@ -58,28 +58,31 @@ You have two convenient ways to access the APIs of `sreq` .
 
 ```go
 const (
-    url       = "http://httpbin.org/get"
-    userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36"
+	url       = "http://httpbin.org/get"
+	userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36"
 )
 
 params := sreq.Params{
-    "k1": "v1",
-    "k2": "v2",
+	"k1": "v1",
+	"k2": "v2",
 }
 
 client := sreq.New()
 
 // Go-style
-req := sreq.
-	NewRequest("GET", url).
-	SetQuery(params).
-	SetUserAgent(userAgent)
-err := client.
+req, err := sreq.NewRequest("GET", url,
+	sreq.WithQuery(params),
+	sreq.WithUserAgent(userAgent),
+)
+if err != nil {
+	panic(err)
+}
+err = client.
 	Do(req).
 	EnsureStatusOk().
 	Verbose(ioutil.Discard)
 if err != nil {
-    panic(err)
+	panic(err)
 }
 
 // Requests-style (Recommended)
@@ -91,7 +94,7 @@ err = client.
 	EnsureStatusOk().
 	Verbose(os.Stdout)
 if err != nil {
-    panic(err)
+	panic(err)
 }
 
 // Output:
