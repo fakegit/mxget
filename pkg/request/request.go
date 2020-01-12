@@ -12,5 +12,5 @@ var (
 
 func init() {
 	DefaultClient = sreq.New()
-	DefaultClient.OnBeforeRequest(sreq.SetUserAgentDefault(DefaultUserAgent))
+	DefaultClient.OnBeforeRequest(sreq.SetDefaultUserAgent(DefaultUserAgent))
 }

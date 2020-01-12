@@ -18,7 +18,7 @@ import (
 
 const (
 	// Version of sreq.
-	Version = "0.8.16"
+	Version = "0.9.0"
 
 	defaultUserAgent = "go-sreq/" + Version
 )
@@ -38,7 +38,9 @@ var (
 
 type (
 	// Values maps a string key to an interface{} type value,
-	// It's typically used for request query parameters, form data and headers.
+	// When it's used for request query parameters, form data or headers,
+	// besides string and []string, its value also supports bool and number,
+	// sreq will convert to string automatically.
 	Values map[string]interface{}
 
 	// Params is an alias of Values, used for for request query parameters.
@@ -57,7 +59,7 @@ type (
 	Files map[string]*File
 
 	// File specifies a file.
-	// To upload a file you must specify its Filename field, otherwise sreq will raise a *RequestError.
+	// To upload a file you must specify its Filename field, otherwise sreq will raise an error.
 	// If you don't specify the MIME field, sreq will detect automatically using http.DetectContentType.
 	File struct {
 		Filename string
@@ -573,12 +575,6 @@ func toString(v interface{}) string {
 		return strconv.FormatUint(uint64(v), 10)
 	case uint8:
 		return strconv.FormatUint(uint64(v), 10)
-	case error:
-		return v.Error()
-	case interface {
-		String() string
-	}:
-		return v.String()
 	default:
 		return ""
 	}
