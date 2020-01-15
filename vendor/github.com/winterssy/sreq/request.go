@@ -48,16 +48,15 @@ type (
 	// Request wraps the raw HTTP request.
 	Request struct {
 		RawRequest *http.Request
-		Body       io.Reader
-		Host       string
-		Headers    Headers
 		Params     Params
 		Form       Form
+		Headers    Headers
+		Host       string
 		Cookies    Cookies
 		Retry      *Retry
 
-		ctx           context.Context
-		errBackground chan error
+		ctx context.Context
+		err chan error
 	}
 
 	// RequestOption provides a convenient way to setup Request.
@@ -72,14 +71,21 @@ type (
 func NewRequest(method string, url string, opts ...RequestOption) (*Request, error) {
 	rawRequest, err := http.NewRequest(method, url, nil)
 	if err != nil {
-		return nil, err
+		return nil, &Error{
+			Op:  "NewRequest",
+			Err: err,
+		}
 	}
 
+	params := make(Params)
+	for k, v := range rawRequest.URL.Query() {
+		params.Set(k, v)
+	}
 	req := &Request{
 		RawRequest: rawRequest,
-		Headers:    make(Headers),
-		Params:     make(Params),
+		Params:     params,
 		Form:       make(Form),
+		Headers:    make(Headers),
 		Cookies:    make(Cookies),
 	}
 	for _, opt := range opts {
@@ -90,72 +96,59 @@ func NewRequest(method string, url string, opts ...RequestOption) (*Request, err
 	return req, err
 }
 
-func (req *Request) bindHTTPRequest() {
-	req.bindHost()
-	req.bindQuery()
-	req.bindForm()
-	req.bindHeaders()
-	req.bindCookies()
-	req.bindBody() // must after bindForm
+// Sync syncs Request's data into the RawRequest object.
+func (req *Request) Sync() *http.Request {
+	req.syncQuery()
+	req.syncForm()
+	req.syncHeaders()
+	req.syncHost()
+	req.syncCookies()
+	return req.RawRequest
 }
 
-func (req *Request) bindHost() {
-	req.RawRequest.Host = req.Host
+func (req *Request) syncQuery() {
+	if len(req.Params) != 0 {
+		req.RawRequest.URL.RawQuery = req.Params.URLEncode(true)
+	}
 }
 
-func (req *Request) bindHeaders() {
+func (req *Request) syncForm() {
+	if len(req.Form) != 0 {
+		req.SetContentType("application/x-www-form-urlencoded")
+		req.SetBody(strings.NewReader(req.Form.URLEncode(true)))
+	}
+}
+
+func (req *Request) syncHeaders() {
 	req.Headers.SetDefault("User-Agent", defaultUserAgent)
-	for k, vs := range req.Headers.Decode() {
-		req.RawRequest.Header.Del(k) // remove existing value
-		for _, v := range vs {
-			req.RawRequest.Header.Add(k, v)
+	req.RawRequest.Header = req.Headers.Decode(true)
+}
+
+func (req *Request) syncHost() {
+	if req.Host != "" {
+		req.RawRequest.Host = req.Host
+	}
+}
+
+func (req *Request) syncCookies() {
+	if len(req.Cookies) != 0 {
+		for _, c := range req.Cookies.Decode() {
+			req.RawRequest.AddCookie(c)
 		}
 	}
 }
 
-func (req *Request) bindQuery() {
-	if len(req.Params) == 0 {
-		return
-	}
-
-	for k, v := range req.RawRequest.URL.Query() {
-		req.Params.SetDefault(k, v)
-	}
-	req.RawRequest.URL.RawQuery = req.Params.Encode(true)
-}
-
-func (req *Request) bindForm() {
-	if len(req.Form) == 0 {
-		return
-	}
-
-	req.SetContentType("application/x-www-form-urlencoded")
-	req.SetBody(strings.NewReader(req.Form.Encode(true)))
-}
-
-func (req *Request) bindCookies() {
-	if len(req.Cookies) == 0 {
-		return
-	}
-
-	for _, c := range req.Cookies.Decode() {
-		req.RawRequest.AddCookie(c)
-	}
-}
-
-func (req *Request) bindBody() {
-	if req.Body == nil {
-		return
-	}
-
-	rc, ok := req.Body.(io.ReadCloser)
-	if !ok && req.Body != nil {
-		rc = ioutil.NopCloser(req.Body)
+// SetBody sets body for the HTTP request.
+// Note: SetBody may not support retry since it's unable to read a stream twice.
+func (req *Request) SetBody(body io.Reader) {
+	rc, ok := body.(io.ReadCloser)
+	if !ok && body != nil {
+		rc = ioutil.NopCloser(body)
 	}
 	req.RawRequest.Body = rc
 
-	if req.Body != nil {
-		switch v := req.Body.(type) {
+	if body != nil {
+		switch v := body.(type) {
 		case *bytes.Buffer:
 			req.RawRequest.ContentLength = int64(v.Len())
 			buf := v.Bytes()
@@ -197,12 +190,6 @@ func (req *Request) bindBody() {
 			req.RawRequest.GetBody = func() (io.ReadCloser, error) { return http.NoBody, nil }
 		}
 	}
-}
-
-// SetBody sets body for the HTTP request.
-// Note: SetBody may not support retry since it's unable to read a stream twice.
-func (req *Request) SetBody(body io.Reader) {
-	req.Body = body
 }
 
 // SetHost sets host for the HTTP request.
@@ -255,7 +242,10 @@ func (req *Request) SetForm(form Form) {
 func (req *Request) SetJSON(data interface{}, escapeHTML bool) error {
 	b, err := jsonMarshal(data, "", "", escapeHTML)
 	if err != nil {
-		return err
+		return &Error{
+			Op:  "Request.SetJSON",
+			Err: err,
+		}
 	}
 
 	req.SetContentType("application/json")
@@ -267,7 +257,10 @@ func (req *Request) SetJSON(data interface{}, escapeHTML bool) error {
 func (req *Request) SetXML(data interface{}) error {
 	b, err := xml.Marshal(data)
 	if err != nil {
-		return err
+		return &Error{
+			Op:  "Request.SetXML",
+			Err: err,
+		}
 	}
 
 	req.SetContentType("application/xml")
@@ -324,7 +317,7 @@ func setMultipartFiles(mw *multipart.Writer, files Files) error {
 }
 
 func setMultipartForm(mw *multipart.Writer, form Form) {
-	for k, vs := range form.Decode() {
+	for k, vs := range form.Decode(false) {
 		for _, v := range vs {
 			mw.WriteField(k, v)
 		}
@@ -334,7 +327,7 @@ func setMultipartForm(mw *multipart.Writer, form Form) {
 // SetMultipart sets multipart payload for the HTTP request.
 // Note: SetMultipart does not support retry since it's unable to read a stream twice.
 func (req *Request) SetMultipart(files Files, form Form) {
-	req.errBackground = make(chan error, 1)
+	req.err = make(chan error, 1)
 	pr, pw := io.Pipe()
 	mw := multipart.NewWriter(pw)
 	go func() {
@@ -343,7 +336,10 @@ func (req *Request) SetMultipart(files Files, form Form) {
 
 		err := setMultipartFiles(mw, files)
 		if err != nil {
-			req.errBackground <- err
+			req.err <- &Error{
+				Op:  "Request.SetMultipart",
+				Err: err,
+			}
 			return
 		}
 

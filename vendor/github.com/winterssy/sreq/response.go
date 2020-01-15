@@ -194,68 +194,33 @@ func (resp *Response) Save(filename string, perm os.FileMode) error {
 // Verbose makes the HTTP request and its response more talkative.
 // It's similar to "curl -v", used for debug.
 // Note: Verbose won't cache the HTTP response body for reuse.
-func (resp *Response) Verbose(w io.Writer) error {
+func (resp *Response) Verbose(w io.Writer, withBody bool) (err error) {
 	if resp.err != nil {
 		return resp.err
 	}
 
-	const (
-		streamBodyTip = "if you see this message it means the HTTP request body is a stream and cannot be read twice"
-	)
+	err = dumpRequest(resp.RawResponse.Request, w, withBody)
 
-	fmt.Fprintf(w, "> %s %s %s\r\n",
-		resp.RawResponse.Request.Method,
-		resp.RawResponse.Request.URL.RequestURI(),
-		resp.RawResponse.Request.Proto)
-	fmt.Fprintf(w, "> Host: %s\r\n", resp.RawResponse.Request.URL.Host)
-	for k := range resp.RawResponse.Request.Header {
-		fmt.Fprintf(w, "> %s: %s\r\n", k, resp.RawResponse.Request.Header.Get(k))
-	}
-	fmt.Fprint(w, ">\r\n")
-
-	if resp.RawResponse.Request.Body == nil {
-		goto handleResponse
-	}
-
-	if resp.RawResponse.Request.GetBody == nil {
-		fmt.Fprintf(w, "* %s\r\n", streamBodyTip)
-	} else if resp.RawResponse.Request.ContentLength != 0 {
-		rc, err := resp.RawResponse.Request.GetBody()
-		if err != nil {
-			return err
-		}
-		defer rc.Close()
-
-		_, err = io.Copy(w, rc)
-		if err != nil {
-			return err
-		}
-
-		fmt.Fprint(w, "\r\n")
-	}
-
-handleResponse:
 	fmt.Fprintf(w, "< %s %s\r\n", resp.RawResponse.Proto, resp.RawResponse.Status)
-	for k := range resp.RawResponse.Header {
-		fmt.Fprintf(w, "< %s: %s\r\n", k, resp.RawResponse.Header.Get(k))
+	for k, vs := range resp.RawResponse.Header {
+		for _, v := range vs {
+			fmt.Fprintf(w, "< %s: %s\r\n", k, v)
+		}
 	}
-	fmt.Fprint(w, "<\r\n")
+	io.WriteString(w, "<\r\n")
 
-	if resp.RawResponse.ContentLength == 0 {
-		return nil
+	if !withBody || resp.RawResponse.ContentLength == 0 {
+		return
 	}
 
 	if resp.body != nil {
 		fmt.Fprintf(w, "%s\r\n", b2s(resp.body))
-		return nil
+		return
 	}
 
 	defer resp.RawResponse.Body.Close()
-	_, err := io.Copy(w, resp.RawResponse.Body)
-	if err != nil {
-		return err
-	}
+	_, err = io.Copy(w, resp.RawResponse.Body)
 
-	fmt.Fprint(w, "\r\n")
-	return nil
+	io.WriteString(w, "\r\n")
+	return
 }

@@ -117,7 +117,10 @@ func (c *Client) SetTimeout(timeout time.Duration) {
 func (c *Client) SetProxy(proxy func(*http.Request) (*neturl.URL, error)) error {
 	t, err := c.httpTransport()
 	if err != nil {
-		return err
+		return &Error{
+			Op:  "Client.SetProxy",
+			Err: err,
+		}
 	}
 
 	t.Proxy = proxy
@@ -129,7 +132,10 @@ func (c *Client) SetProxy(proxy func(*http.Request) (*neturl.URL, error)) error 
 func (c *Client) SetProxyFromURL(url string) error {
 	fixedURL, err := neturl.Parse(url)
 	if err != nil {
-		return err
+		return &Error{
+			Op:  "Client.SetProxyFromURL",
+			Err: err,
+		}
 	}
 
 	return c.SetProxy(http.ProxyURL(fixedURL))
@@ -144,7 +150,10 @@ func (c *Client) DisableProxy() error {
 func (c *Client) SetTLSClientConfig(config *tls.Config) error {
 	t, err := c.httpTransport()
 	if err != nil {
-		return err
+		return &Error{
+			Op:  "Client.SetTLSClientConfig",
+			Err: err,
+		}
 	}
 
 	t.TLSClientConfig = config
@@ -156,7 +165,10 @@ func (c *Client) SetTLSClientConfig(config *tls.Config) error {
 func (c *Client) AppendClientCerts(certs ...tls.Certificate) error {
 	t, err := c.httpTransport()
 	if err != nil {
-		return err
+		return &Error{
+			Op:  "Client.AppendClientCerts",
+			Err: err,
+		}
 	}
 
 	if t.TLSClientConfig == nil {
@@ -172,12 +184,18 @@ func (c *Client) AppendClientCerts(certs ...tls.Certificate) error {
 func (c *Client) AppendRootCerts(pemFile string) error {
 	pemCerts, err := ioutil.ReadFile(pemFile)
 	if err != nil {
-		return err
+		return &Error{
+			Op:  "Client.AppendRootCerts",
+			Err: err,
+		}
 	}
 
 	t, err := c.httpTransport()
 	if err != nil {
-		return err
+		return &Error{
+			Op:  "Client.AppendRootCerts",
+			Err: err,
+		}
 	}
 
 	if t.TLSClientConfig == nil {
@@ -195,7 +213,10 @@ func (c *Client) AppendRootCerts(pemFile string) error {
 func (c *Client) DisableVerify() error {
 	t, err := c.httpTransport()
 	if err != nil {
-		return err
+		return &Error{
+			Op:  "Client.DisableVerify",
+			Err: err,
+		}
 	}
 
 	if t.TLSClientConfig == nil {
@@ -210,12 +231,18 @@ func (c *Client) DisableVerify() error {
 // SetCookies sets cookies to cookie jar for the given URL.
 func (c *Client) SetCookies(url string, cookies ...*http.Cookie) error {
 	if c.RawClient.Jar == nil {
-		return ErrNilCookieJar
+		return &Error{
+			Op:  "Client.SetCookies",
+			Err: ErrNilCookieJar,
+		}
 	}
 
 	u, err := neturl.Parse(url)
 	if err != nil {
-		return err
+		return &Error{
+			Op:  "Client.SetCookies",
+			Err: err,
+		}
 	}
 
 	c.RawClient.Jar.SetCookies(u, cookies)
@@ -361,7 +388,7 @@ func (c *Client) Do(req *Request) *Response {
 		return resp
 	}
 
-	req.bindHTTPRequest()
+	req.Sync()
 	c.doWithRetry(req, resp)
 	c.onAfterResponse(resp)
 	return resp
@@ -378,7 +405,7 @@ func (c *Client) onBeforeRequest(req *Request) error {
 }
 
 func (c *Client) doWithRetry(req *Request, resp *Response) {
-	retry := req.Retry.merge(defaultRetry)
+	retry := req.Retry.Merge(defaultRetry)
 	allowRetry := req.RawRequest.Body == nil || req.RawRequest.GetBody != nil
 
 	ctx := req.ctx
@@ -424,7 +451,7 @@ func (c *Client) do(req *Request) (*http.Response, error) {
 	}
 
 	select {
-	case err = <-req.errBackground:
+	case err = <-req.err:
 		return rawResponse, err
 	default:
 	}

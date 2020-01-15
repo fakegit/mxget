@@ -80,7 +80,7 @@ if err != nil {
 err = client.
 	Do(req).
 	EnsureStatusOk().
-	Verbose(ioutil.Discard)
+	Verbose(ioutil.Discard, false)
 if err != nil {
 	panic(err)
 }
@@ -92,7 +92,7 @@ err = client.
 		sreq.WithUserAgent(userAgent),
 	).
 	EnsureStatusOk().
-	Verbose(os.Stdout)
+	Verbose(os.Stdout, true)
 if err != nil {
 	panic(err)
 }

@@ -1,9 +1,7 @@
 package sreq
 
 import (
-	"bytes"
 	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
 	neturl "net/url"
@@ -12,28 +10,13 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
-	"unsafe"
 )
 
 const (
 	// Version of sreq.
-	Version = "0.9.0"
+	Version = "0.9.3"
 
 	defaultUserAgent = "go-sreq/" + Version
-)
-
-var (
-	// ErrUnexpectedTransport can be used if assert a RoundTripper as a non-nil *http.Transport instance failed.
-	ErrUnexpectedTransport = errors.New("current transport isn't a non-nil *http.Transport instance")
-
-	// ErrNilCookieJar can be used when the cookie jar is nil.
-	ErrNilCookieJar = errors.New("nil cookie jar")
-
-	// ErrNoCookie can be used when a cookie not found in the HTTP response or cookie jar.
-	ErrNoCookie = errors.New("named cookie not present")
-
-	bufPool = &sync.Pool{New: func() interface{} { return &bytes.Buffer{} }}
 )
 
 type (
@@ -74,17 +57,6 @@ type (
 	// Number is a shortcut for float64.
 	Number float64
 )
-
-func acquireBuffer() *bytes.Buffer {
-	return bufPool.Get().(*bytes.Buffer)
-}
-
-func releaseBuffer(buf *bytes.Buffer) {
-	if buf != nil {
-		buf.Reset()
-		bufPool.Put(buf)
-	}
-}
 
 // Get gets the equivalent request query parameter, form data or header value associated with key.
 func (v Values) Get(key string) []string {
@@ -141,17 +113,21 @@ func (v Values) Merge(v2 Values) {
 }
 
 // Decode translates v and returns the equivalent request query parameters, form data or headers.
-func (v Values) Decode() map[string][]string {
+func (v Values) Decode(canonicalHeaderKey bool) map[string][]string {
 	vv := make(map[string][]string, len(v))
 	for k := range v {
-		vv[k] = v.Get(k)
+		if canonicalHeaderKey {
+			vv[http.CanonicalHeaderKey(k)] = v.Get(k)
+		} else {
+			vv[k] = v.Get(k)
+		}
 	}
 	return vv
 }
 
-// Encode encodes v into URL form sorted by key when v is considered as request query parameters or form data.
-func (v Values) Encode(urlEscaped bool) string {
-	vv := v.Decode()
+// URLEncode encodes v into URL form sorted by key when v is considered as request query parameters or form data.
+func (v Values) URLEncode(escaped bool) string {
+	vv := v.Decode(false)
 	keys := make([]string, 0, len(vv))
 	for k := range v {
 		keys = append(keys, k)
@@ -166,7 +142,7 @@ func (v Values) Encode(urlEscaped bool) string {
 				sb.WriteByte('&')
 			}
 
-			if urlEscaped {
+			if escaped {
 				k = neturl.QueryEscape(k)
 				v = neturl.QueryEscape(v)
 			}
@@ -468,7 +444,7 @@ func (h H) GetNumberDefault(key string, defaultValue Number) Number {
 // GetNumber gets the Number value associated with key.
 // The zero value is returned if the key not exists.
 func (h H) GetNumber(key string) Number {
-	return h.GetNumberDefault(key, Number(0))
+	return h.GetNumberDefault(key, 0)
 }
 
 // GetSlice gets the []interface{} value associated with key.
@@ -539,63 +515,4 @@ func (h H) Decode(output interface{}) error {
 // String returns the JSON-encoded text representation of h.
 func (h H) String() string {
 	return toJSON(h, "", "\t", false)
-}
-
-func b2s(b []byte) string {
-	return *(*string)(unsafe.Pointer(&b))
-}
-
-func toString(v interface{}) string {
-	switch v := v.(type) {
-	case string:
-		return v
-	case bool:
-		return strconv.FormatBool(v)
-	case float64:
-		return strconv.FormatFloat(v, 'f', -1, 64)
-	case float32:
-		return strconv.FormatFloat(float64(v), 'f', -1, 32)
-	case int:
-		return strconv.FormatInt(int64(v), 10)
-	case int64:
-		return strconv.FormatInt(v, 10)
-	case int32:
-		return strconv.FormatInt(int64(v), 10)
-	case int16:
-		return strconv.FormatInt(int64(v), 10)
-	case int8:
-		return strconv.FormatInt(int64(v), 10)
-	case uint:
-		return strconv.FormatUint(uint64(v), 10)
-	case uint64:
-		return strconv.FormatUint(v, 10)
-	case uint32:
-		return strconv.FormatUint(uint64(v), 10)
-	case uint16:
-		return strconv.FormatUint(uint64(v), 10)
-	case uint8:
-		return strconv.FormatUint(uint64(v), 10)
-	default:
-		return ""
-	}
-}
-
-func toJSON(v interface{}, prefix string, indent string, escapeHTML bool) string {
-	b, err := jsonMarshal(v, prefix, indent, escapeHTML)
-	if err != nil {
-		return "{}"
-	}
-
-	return strings.TrimSuffix(b2s(b), "\n")
-}
-
-func jsonMarshal(v interface{}, prefix string, indent string, escapeHTML bool) ([]byte, error) {
-	buf := acquireBuffer()
-	defer releaseBuffer(buf)
-
-	encoder := json.NewEncoder(buf)
-	encoder.SetIndent(prefix, indent)
-	encoder.SetEscapeHTML(escapeHTML)
-	err := encoder.Encode(v)
-	return buf.Bytes(), err
 }

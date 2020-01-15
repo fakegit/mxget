@@ -5,7 +5,7 @@ package sreq
 func SetDefaultHost(host string) BeforeRequestHook {
 	return func(req *Request) error {
 		if req.Host == "" {
-			req.Host = host
+			req.SetHost(host)
 		}
 		return nil
 	}
@@ -96,9 +96,7 @@ func SetDefaultBearerToken(token string) BeforeRequestHook {
 // can be overwrite by request level option.
 func SetDefaultRetry(retry *Retry) BeforeRequestHook {
 	return func(req *Request) error {
-		if req.Retry == nil {
-			req.SetRetry(retry)
-		}
+		req.Retry = req.Retry.Merge(retry)
 		return nil
 	}
 }
