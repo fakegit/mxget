@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	defaultMaxAttempts = 4
+	defaultMaxAttempts = 1
 	defaultWaitTime    = 1 * time.Second
 	defaultMaxWaitTime = 30 * time.Second
 )
@@ -30,7 +30,7 @@ type (
 
 	// Retry specifies the retry policy for handling retries.
 	Retry struct {
-		// MaxAttempts specifies the max attempts of the retry policy, default is 4.
+		// MaxAttempts specifies the max attempts of the retry policy, default is 1, it means no retries.
 		MaxAttempts int
 
 		// WaitTime specifies the wait time to sleep before retrying request, default is 1s.

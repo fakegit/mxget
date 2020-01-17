@@ -6,8 +6,8 @@ import (
 )
 
 var (
-	// ErrUnexpectedTransport can be used if assert a RoundTripper as a non-nil *http.Transport instance failed.
-	ErrUnexpectedTransport = errors.New("current transport isn't a non-nil *http.Transport instance")
+	// ErrUnexpectedTransport can be used if assert a RoundTripper as an *http.Transport instance failed.
+	ErrUnexpectedTransport = errors.New("current transport isn't an *http.Transport instance")
 
 	// ErrNilCookieJar can be used when the cookie jar is nil.
 	ErrNilCookieJar = errors.New("nil cookie jar")

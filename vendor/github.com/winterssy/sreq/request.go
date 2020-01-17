@@ -139,8 +139,7 @@ func (req *Request) syncCookies() {
 }
 
 // SetBody sets body for the HTTP request.
-// Note: SetBody may not support retry since it's unable to read a stream twice.
-func (req *Request) SetBody(body io.Reader) {
+func (req *Request) SetBody(body io.Reader) *Request {
 	rc, ok := body.(io.ReadCloser)
 	if !ok && body != nil {
 		rc = ioutil.NopCloser(body)
@@ -190,52 +189,63 @@ func (req *Request) SetBody(body io.Reader) {
 			req.RawRequest.GetBody = func() (io.ReadCloser, error) { return http.NoBody, nil }
 		}
 	}
+
+	return req
 }
 
 // SetHost sets host for the HTTP request.
-func (req *Request) SetHost(host string) {
+func (req *Request) SetHost(host string) *Request {
 	req.Host = host
+	return req
 }
 
 // SetHeaders sets headers for the HTTP request.
-func (req *Request) SetHeaders(headers Headers) {
+func (req *Request) SetHeaders(headers Headers) *Request {
 	req.Headers.Update(headers)
+	return req
 }
 
 // SetContentType sets Content-Type header value for the HTTP request.
-func (req *Request) SetContentType(contentType string) {
+func (req *Request) SetContentType(contentType string) *Request {
 	req.Headers.Set("Content-Type", contentType)
+	return req
 }
 
 // SetUserAgent sets User-Agent header value for the HTTP request.
-func (req *Request) SetUserAgent(userAgent string) {
+func (req *Request) SetUserAgent(userAgent string) *Request {
 	req.Headers.Set("User-Agent", userAgent)
+	return req
 }
 
 // SetReferer sets Referer header value for the HTTP request.
-func (req *Request) SetReferer(referer string) {
+func (req *Request) SetReferer(referer string) *Request {
 	req.Headers.Set("Referer", referer)
+	return req
 }
 
 // SetQuery sets query parameters for the HTTP request.
-func (req *Request) SetQuery(params Params) {
+func (req *Request) SetQuery(params Params) *Request {
 	req.Params.Update(params)
+	return req
 }
 
 // SetContent sets bytes payload for the HTTP request.
-func (req *Request) SetContent(content []byte) {
+func (req *Request) SetContent(content []byte) *Request {
 	req.SetBody(bytes.NewBuffer(content))
+	return req
 }
 
 // SetText sets plain text payload for the HTTP request.
-func (req *Request) SetText(text string) {
+func (req *Request) SetText(text string) *Request {
 	req.SetContentType("text/plain; charset=utf-8")
 	req.SetBody(bytes.NewBufferString(text))
+	return req
 }
 
 // SetForm sets form payload for the HTTP request.
-func (req *Request) SetForm(form Form) {
+func (req *Request) SetForm(form Form) *Request {
 	req.Form.Update(form)
+	return req
 }
 
 // SetJSON sets JSON payload for the HTTP request.
@@ -325,8 +335,7 @@ func setMultipartForm(mw *multipart.Writer, form Form) {
 }
 
 // SetMultipart sets multipart payload for the HTTP request.
-// Note: SetMultipart does not support retry since it's unable to read a stream twice.
-func (req *Request) SetMultipart(files Files, form Form) {
+func (req *Request) SetMultipart(files Files, form Form) *Request {
 	req.err = make(chan error, 1)
 	pr, pw := io.Pipe()
 	mw := multipart.NewWriter(pw)
@@ -350,11 +359,13 @@ func (req *Request) SetMultipart(files Files, form Form) {
 
 	req.SetContentType(mw.FormDataContentType())
 	req.SetBody(pr)
+	return req
 }
 
 // SetCookies sets cookies for the HTTP request.
-func (req *Request) SetCookies(cookies Cookies) {
+func (req *Request) SetCookies(cookies Cookies) *Request {
 	req.Cookies.Update(cookies)
+	return req
 }
 
 func basicAuth(username, password string) string {
@@ -363,27 +374,30 @@ func basicAuth(username, password string) string {
 }
 
 // SetBasicAuth sets basic authentication for the HTTP request.
-func (req *Request) SetBasicAuth(username string, password string) {
+func (req *Request) SetBasicAuth(username string, password string) *Request {
 	req.Headers.Set("Authorization", "Basic "+basicAuth(username, password))
+	return req
 }
 
 // SetBearerToken sets bearer token for the HTTP request.
-func (req *Request) SetBearerToken(token string) {
+func (req *Request) SetBearerToken(token string) *Request {
 	req.Headers.Set("Authorization", "Bearer "+token)
+	return req
 }
 
 // SetContext sets context for the HTTP request.
-func (req *Request) SetContext(ctx context.Context) {
+func (req *Request) SetContext(ctx context.Context) *Request {
 	req.ctx = ctx
+	return req
 }
 
 // SetRetry specifies the retry policy for handling retries.
-func (req *Request) SetRetry(retry *Retry) {
+func (req *Request) SetRetry(retry *Retry) *Request {
 	req.Retry = retry
+	return req
 }
 
 // WithBody is a request option to set body for the HTTP request.
-// Note: WithBody may not support retry since it's unable to read a stream twice.
 func WithBody(body io.Reader) RequestOption {
 	return func(req *Request) error {
 		req.SetBody(body)
@@ -478,7 +492,6 @@ func WithXML(data interface{}) RequestOption {
 }
 
 // WithMultipart is a request option sets multipart payload for the HTTP request.
-// Note: WithMultipart does not support retry since it's unable to read a stream twice.
 func WithMultipart(files Files, form Form) RequestOption {
 	return func(req *Request) error {
 		req.SetMultipart(files, form)
