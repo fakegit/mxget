@@ -15,41 +15,36 @@ import (
 type (
 	// Response wraps the raw HTTP response.
 	Response struct {
-		RawResponse *http.Response
-
-		err  error
-		body []byte
+		*http.Response
+		content []byte
+		err     error
 	}
 
 	// AfterResponseHook specifies an after response hook.
-	AfterResponseHook func(resp *Response)
+	// If the returned error isn't nil, sreq will consider resp as a bad response.
+	AfterResponseHook func(resp *Response) error
 )
 
-// RaiseError is used to make sreq consider resp as an error response.
-func (resp *Response) RaiseError(err error) {
-	resp.err = err
-}
-
-// Error returns resp's potential error.
+// Error reports resp's potential error.
 func (resp *Response) Error() error {
 	return resp.err
 }
 
 // Raw returns the raw HTTP response.
 func (resp *Response) Raw() (*http.Response, error) {
-	return resp.RawResponse, resp.err
+	return resp.Response, resp.err
 }
 
 // Content decodes the HTTP response body to bytes.
 func (resp *Response) Content() ([]byte, error) {
-	if resp.err != nil || resp.body != nil {
-		return resp.body, resp.err
+	if resp.err != nil || resp.content != nil {
+		return resp.content, resp.err
 	}
-	defer resp.RawResponse.Body.Close()
+	defer resp.Body.Close()
 
 	var err error
-	resp.body, err = ioutil.ReadAll(resp.RawResponse.Body)
-	return resp.body, err
+	resp.content, err = ioutil.ReadAll(resp.Body)
+	return resp.content, err
 }
 
 // Text decodes the HTTP response body and returns the text representation of its raw data
@@ -71,15 +66,15 @@ func (resp *Response) JSON(v interface{}) error {
 		return resp.err
 	}
 
-	if resp.body != nil {
-		return json.Unmarshal(resp.body, v)
+	if resp.content != nil {
+		return json.Unmarshal(resp.content, v)
 	}
 
 	buf := acquireBuffer()
-	tee := io.TeeReader(resp.RawResponse.Body, buf)
+	tee := io.TeeReader(resp.Body, buf)
 	defer func() {
-		resp.RawResponse.Body.Close()
-		resp.body = buf.Bytes()
+		resp.Body.Close()
+		resp.content = buf.Bytes()
 		releaseBuffer(buf)
 	}()
 
@@ -98,15 +93,15 @@ func (resp *Response) XML(v interface{}) error {
 		return resp.err
 	}
 
-	if resp.body != nil {
-		return xml.Unmarshal(resp.body, v)
+	if resp.content != nil {
+		return xml.Unmarshal(resp.content, v)
 	}
 
 	buf := acquireBuffer()
-	tee := io.TeeReader(resp.RawResponse.Body, buf)
+	tee := io.TeeReader(resp.Body, buf)
 	defer func() {
-		resp.RawResponse.Body.Close()
-		resp.body = buf.Bytes()
+		resp.Body.Close()
+		resp.content = buf.Bytes()
 		releaseBuffer(buf)
 	}()
 
@@ -119,7 +114,7 @@ func (resp *Response) Cookies() ([]*http.Cookie, error) {
 		return nil, resp.err
 	}
 
-	return resp.RawResponse.Cookies(), nil
+	return resp.Response.Cookies(), nil
 }
 
 // Cookie returns the HTTP response named cookie.
@@ -149,9 +144,8 @@ func (resp *Response) EnsureStatus2xx() *Response {
 		return resp
 	}
 
-	if resp.RawResponse.StatusCode/100 != 2 {
-		resp.RaiseError(fmt.Errorf("sreq: response status code expected to be 2xx, but got %d",
-			resp.RawResponse.StatusCode))
+	if resp.StatusCode/100 != 2 {
+		resp.err = fmt.Errorf("sreq: bad status: %s", resp.Status)
 	}
 	return resp
 }
@@ -162,9 +156,8 @@ func (resp *Response) EnsureStatus(code int) *Response {
 		return resp
 	}
 
-	if resp.RawResponse.StatusCode != code {
-		resp.RaiseError(fmt.Errorf("sreq: response status code expected to be %d, but got %d",
-			code, resp.RawResponse.StatusCode))
+	if resp.StatusCode != code {
+		resp.err = fmt.Errorf("sreq: bad status: %s", resp.Status)
 	}
 	return resp
 }
@@ -176,8 +169,8 @@ func (resp *Response) Save(filename string, perm os.FileMode) error {
 		return resp.err
 	}
 
-	if resp.body != nil {
-		return ioutil.WriteFile(filename, resp.body, perm)
+	if resp.content != nil {
+		return ioutil.WriteFile(filename, resp.content, perm)
 	}
 
 	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm)
@@ -185,9 +178,9 @@ func (resp *Response) Save(filename string, perm os.FileMode) error {
 		return err
 	}
 	defer file.Close()
-	defer resp.RawResponse.Body.Close()
+	defer resp.Body.Close()
 
-	_, err = io.Copy(file, resp.RawResponse.Body)
+	_, err = io.Copy(file, resp.Body)
 	return err
 }
 
@@ -199,27 +192,27 @@ func (resp *Response) Verbose(w io.Writer, withBody bool) (err error) {
 		return resp.err
 	}
 
-	err = dumpRequest(resp.RawResponse.Request, w, withBody)
+	err = dumpRequest(resp.Request, w, withBody)
 
-	fmt.Fprintf(w, "< %s %s\r\n", resp.RawResponse.Proto, resp.RawResponse.Status)
-	for k, vs := range resp.RawResponse.Header {
+	fmt.Fprintf(w, "< %s %s\r\n", resp.Proto, resp.Status)
+	for k, vs := range resp.Header {
 		for _, v := range vs {
 			fmt.Fprintf(w, "< %s: %s\r\n", k, v)
 		}
 	}
 	io.WriteString(w, "<\r\n")
 
-	if !withBody || resp.RawResponse.ContentLength == 0 {
+	if !withBody || resp.ContentLength == 0 {
 		return
 	}
 
-	if resp.body != nil {
-		fmt.Fprintf(w, "%s\r\n", b2s(resp.body))
+	if resp.content != nil {
+		fmt.Fprintf(w, "%s\r\n", b2s(resp.content))
 		return
 	}
 
-	defer resp.RawResponse.Body.Close()
-	_, err = io.Copy(w, resp.RawResponse.Body)
+	defer resp.Body.Close()
+	_, err = io.Copy(w, resp.Body)
 
 	io.WriteString(w, "\r\n")
 	return

@@ -47,16 +47,15 @@ const (
 type (
 	// Request wraps the raw HTTP request.
 	Request struct {
-		RawRequest *http.Request
-		Params     Params
-		Form       Form
-		Headers    Headers
-		Host       string
-		Cookies    Cookies
-		Retry      *Retry
-
-		ctx context.Context
-		err chan error
+		*http.Request
+		Query   Params
+		Form    Form
+		Headers Headers
+		Host    string
+		Cookies Cookies
+		Retry   *Retry
+		ctx     context.Context
+		err     chan error
 	}
 
 	// RequestOption provides a convenient way to setup Request.
@@ -77,16 +76,16 @@ func NewRequest(method string, url string, opts ...RequestOption) (*Request, err
 		}
 	}
 
-	params := make(Params)
+	query := make(Params)
 	for k, v := range rawRequest.URL.Query() {
-		params.Set(k, v)
+		query.Set(k, v)
 	}
 	req := &Request{
-		RawRequest: rawRequest,
-		Params:     params,
-		Form:       make(Form),
-		Headers:    make(Headers),
-		Cookies:    make(Cookies),
+		Request: rawRequest,
+		Query:   query,
+		Form:    make(Form),
+		Headers: make(Headers),
+		Cookies: make(Cookies),
 	}
 	for _, opt := range opts {
 		if err = opt(req); err != nil {
@@ -96,19 +95,19 @@ func NewRequest(method string, url string, opts ...RequestOption) (*Request, err
 	return req, err
 }
 
-// Sync syncs Request's data into the RawRequest object.
+// Sync syncs Request's data into the raw HTTP request.
 func (req *Request) Sync() *http.Request {
 	req.syncQuery()
 	req.syncForm()
 	req.syncHeaders()
 	req.syncHost()
 	req.syncCookies()
-	return req.RawRequest
+	return req.Request
 }
 
 func (req *Request) syncQuery() {
-	if len(req.Params) != 0 {
-		req.RawRequest.URL.RawQuery = req.Params.URLEncode(true)
+	if len(req.Query) != 0 {
+		req.URL.RawQuery = req.Query.URLEncode(true)
 	}
 }
 
@@ -121,19 +120,19 @@ func (req *Request) syncForm() {
 
 func (req *Request) syncHeaders() {
 	req.Headers.SetDefault("User-Agent", defaultUserAgent)
-	req.RawRequest.Header = req.Headers.Decode(true)
+	req.Header = req.Headers.Decode(true)
 }
 
 func (req *Request) syncHost() {
 	if req.Host != "" {
-		req.RawRequest.Host = req.Host
+		req.Request.Host = req.Host
 	}
 }
 
 func (req *Request) syncCookies() {
 	if len(req.Cookies) != 0 {
 		for _, c := range req.Cookies.Decode() {
-			req.RawRequest.AddCookie(c)
+			req.AddCookie(c)
 		}
 	}
 }
@@ -144,28 +143,28 @@ func (req *Request) SetBody(body io.Reader) *Request {
 	if !ok && body != nil {
 		rc = ioutil.NopCloser(body)
 	}
-	req.RawRequest.Body = rc
+	req.Body = rc
 
 	if body != nil {
 		switch v := body.(type) {
 		case *bytes.Buffer:
-			req.RawRequest.ContentLength = int64(v.Len())
+			req.ContentLength = int64(v.Len())
 			buf := v.Bytes()
-			req.RawRequest.GetBody = func() (io.ReadCloser, error) {
+			req.GetBody = func() (io.ReadCloser, error) {
 				r := bytes.NewReader(buf)
 				return ioutil.NopCloser(r), nil
 			}
 		case *bytes.Reader:
-			req.RawRequest.ContentLength = int64(v.Len())
+			req.ContentLength = int64(v.Len())
 			snapshot := *v
-			req.RawRequest.GetBody = func() (io.ReadCloser, error) {
+			req.GetBody = func() (io.ReadCloser, error) {
 				r := snapshot
 				return ioutil.NopCloser(&r), nil
 			}
 		case *strings.Reader:
-			req.RawRequest.ContentLength = int64(v.Len())
+			req.ContentLength = int64(v.Len())
 			snapshot := *v
-			req.RawRequest.GetBody = func() (io.ReadCloser, error) {
+			req.GetBody = func() (io.ReadCloser, error) {
 				r := snapshot
 				return ioutil.NopCloser(&r), nil
 			}
@@ -184,9 +183,9 @@ func (req *Request) SetBody(body io.Reader) *Request {
 		// so we use a well-known ReadCloser variable instead
 		// and have the http package also treat that sentinel
 		// variable to mean explicitly zero.
-		if req.RawRequest.GetBody != nil && req.RawRequest.ContentLength == 0 {
-			req.RawRequest.Body = http.NoBody
-			req.RawRequest.GetBody = func() (io.ReadCloser, error) { return http.NoBody, nil }
+		if req.GetBody != nil && req.ContentLength == 0 {
+			req.Body = http.NoBody
+			req.GetBody = func() (io.ReadCloser, error) { return http.NoBody, nil }
 		}
 	}
 
@@ -224,8 +223,8 @@ func (req *Request) SetReferer(referer string) *Request {
 }
 
 // SetQuery sets query parameters for the HTTP request.
-func (req *Request) SetQuery(params Params) *Request {
-	req.Params.Update(params)
+func (req *Request) SetQuery(query Params) *Request {
+	req.Query.Update(query)
 	return req
 }
 
@@ -446,9 +445,9 @@ func WithReferer(referer string) RequestOption {
 }
 
 // WithQuery is a request option to set query parameters for the HTTP request.
-func WithQuery(params Params) RequestOption {
+func WithQuery(query Params) RequestOption {
 	return func(req *Request) error {
-		req.SetQuery(params)
+		req.SetQuery(query)
 		return nil
 	}
 }

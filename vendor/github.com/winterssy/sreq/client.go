@@ -32,11 +32,13 @@ type (
 	// Do not modify the client across Goroutines!
 	// You should reuse it as possible after initialized.
 	Client struct {
-		RawClient *http.Client
-
+		*http.Client
 		beforeRequestHooks []BeforeRequestHook
 		afterResponseHooks []AfterResponseHook
 	}
+
+	// ClientOption provides a convenient way to setup Client.
+	ClientOption func(c *Client) error
 )
 
 // New returns a new Client.
@@ -51,13 +53,25 @@ func New() *Client {
 		Timeout:   DefaultTimeout,
 	}
 	client := &Client{
-		RawClient: rawClient,
+		Client: rawClient,
 	}
 	return client
 }
 
+// NewWithOptions returns a new Client given one or more client options.
+func NewWithOptions(opts ...ClientOption) (*Client, error) {
+	client := New()
+	var err error
+	for _, opt := range opts {
+		if err = opt(client); err != nil {
+			break
+		}
+	}
+	return client, err
+}
+
 func (c *Client) httpTransport() (*http.Transport, error) {
-	t, ok := c.RawClient.Transport.(*http.Transport)
+	t, ok := c.Transport.(*http.Transport)
 	if !ok {
 		return nil, ErrUnexpectedTransport
 	}
@@ -67,13 +81,13 @@ func (c *Client) httpTransport() (*http.Transport, error) {
 
 // SetTransport sets transport of the HTTP client.
 func (c *Client) SetTransport(transport http.RoundTripper) *Client {
-	c.RawClient.Transport = transport
+	c.Transport = transport
 	return c
 }
 
 // SetRedirect sets policy of the HTTP client for handling redirects.
 func (c *Client) SetRedirect(policy func(req *http.Request, via []*http.Request) error) *Client {
-	c.RawClient.CheckRedirect = policy
+	c.CheckRedirect = policy
 	return c
 }
 
@@ -84,7 +98,7 @@ func DisableRedirect(_ *http.Request, _ []*http.Request) error {
 
 // SetCookieJar sets cookie jar of the HTTP client.
 func (c *Client) SetCookieJar(jar http.CookieJar) *Client {
-	c.RawClient.Jar = jar
+	c.Jar = jar
 	return c
 }
 
@@ -97,30 +111,30 @@ func (c *Client) DisableSession() *Client {
 
 // SetTimeout sets timeout of the HTTP client.
 func (c *Client) SetTimeout(timeout time.Duration) *Client {
-	c.RawClient.Timeout = timeout
+	c.Timeout = timeout
 	return c
 }
 
 // SetProxy sets proxy of the HTTP client.
-func (c *Client) SetProxy(proxy func(*http.Request) (*neturl.URL, error)) (*Client, error) {
+func (c *Client) SetProxy(proxy func(*http.Request) (*neturl.URL, error)) error {
 	t, err := c.httpTransport()
 	if err != nil {
-		return c, &Error{
+		return &Error{
 			Op:  "Client.SetProxy",
 			Err: err,
 		}
 	}
 
 	t.Proxy = proxy
-	c.RawClient.Transport = t
-	return c, nil
+	c.Transport = t
+	return nil
 }
 
 // SetProxyFromURL sets proxy of the HTTP client from a URL.
-func (c *Client) SetProxyFromURL(url string) (*Client, error) {
+func (c *Client) SetProxyFromURL(url string) error {
 	fixedURL, err := neturl.Parse(url)
 	if err != nil {
-		return c, &Error{
+		return &Error{
 			Op:  "Client.SetProxyFromURL",
 			Err: err,
 		}
@@ -130,30 +144,30 @@ func (c *Client) SetProxyFromURL(url string) (*Client, error) {
 }
 
 // DisableProxy makes the HTTP client not use proxy.
-func (c *Client) DisableProxy() (*Client, error) {
+func (c *Client) DisableProxy() error {
 	return c.SetProxy(nil)
 }
 
 // SetTLSClientConfig sets TLS configuration of the HTTP client.
-func (c *Client) SetTLSClientConfig(config *tls.Config) (*Client, error) {
+func (c *Client) SetTLSClientConfig(config *tls.Config) error {
 	t, err := c.httpTransport()
 	if err != nil {
-		return c, &Error{
+		return &Error{
 			Op:  "Client.SetTLSClientConfig",
 			Err: err,
 		}
 	}
 
 	t.TLSClientConfig = config
-	c.RawClient.Transport = t
-	return c, nil
+	c.Transport = t
+	return nil
 }
 
 // AppendClientCerts appends client certificates to the HTTP client.
-func (c *Client) AppendClientCerts(certs ...tls.Certificate) (*Client, error) {
+func (c *Client) AppendClientCerts(certs ...tls.Certificate) error {
 	t, err := c.httpTransport()
 	if err != nil {
-		return c, &Error{
+		return &Error{
 			Op:  "Client.AppendClientCerts",
 			Err: err,
 		}
@@ -164,15 +178,15 @@ func (c *Client) AppendClientCerts(certs ...tls.Certificate) (*Client, error) {
 	}
 
 	t.TLSClientConfig.Certificates = append(t.TLSClientConfig.Certificates, certs...)
-	c.RawClient.Transport = t
-	return c, nil
+	c.Transport = t
+	return nil
 }
 
 // AppendRootCerts appends root certificates from a pem file to the HTTP client.
-func (c *Client) AppendRootCerts(pemFile string) (*Client, error) {
+func (c *Client) AppendRootCerts(pemFile string) error {
 	pemCerts, err := ioutil.ReadFile(pemFile)
 	if err != nil {
-		return c, &Error{
+		return &Error{
 			Op:  "Client.AppendRootCerts",
 			Err: err,
 		}
@@ -180,7 +194,7 @@ func (c *Client) AppendRootCerts(pemFile string) (*Client, error) {
 
 	t, err := c.httpTransport()
 	if err != nil {
-		return c, &Error{
+		return &Error{
 			Op:  "Client.AppendRootCerts",
 			Err: err,
 		}
@@ -193,15 +207,15 @@ func (c *Client) AppendRootCerts(pemFile string) (*Client, error) {
 		t.TLSClientConfig.RootCAs = x509.NewCertPool()
 	}
 	t.TLSClientConfig.RootCAs.AppendCertsFromPEM(pemCerts)
-	c.RawClient.Transport = t
-	return c, nil
+	c.Transport = t
+	return nil
 }
 
 // DisableVerify makes the HTTP client not verify the server's TLS certificate.
-func (c *Client) DisableVerify() (*Client, error) {
+func (c *Client) DisableVerify() error {
 	t, err := c.httpTransport()
 	if err != nil {
-		return c, &Error{
+		return &Error{
 			Op:  "Client.DisableVerify",
 			Err: err,
 		}
@@ -212,14 +226,14 @@ func (c *Client) DisableVerify() (*Client, error) {
 	}
 
 	t.TLSClientConfig.InsecureSkipVerify = true
-	c.RawClient.Transport = t
-	return c, nil
+	c.Transport = t
+	return nil
 }
 
 // SetCookies sets cookies to cookie jar for the given URL.
-func (c *Client) SetCookies(url string, cookies ...*http.Cookie) (*Client, error) {
-	if c.RawClient.Jar == nil {
-		return c, &Error{
+func (c *Client) SetCookies(url string, cookies ...*http.Cookie) error {
+	if c.Jar == nil {
+		return &Error{
 			Op:  "Client.SetCookies",
 			Err: ErrNilCookieJar,
 		}
@@ -227,14 +241,14 @@ func (c *Client) SetCookies(url string, cookies ...*http.Cookie) (*Client, error
 
 	u, err := neturl.Parse(url)
 	if err != nil {
-		return c, &Error{
+		return &Error{
 			Op:  "Client.SetCookies",
 			Err: err,
 		}
 	}
 
-	c.RawClient.Jar.SetCookies(u, cookies)
-	return c, nil
+	c.Jar.SetCookies(u, cookies)
+	return nil
 }
 
 // OnBeforeRequest appends request hooks into the before request chain.
@@ -326,7 +340,7 @@ func (c *Client) Send(method string, url string, opts ...RequestOption) *Respons
 
 // FilterCookies returns the cookies to send in a request for the given URL from cookie jar.
 func (c *Client) FilterCookies(url string) ([]*http.Cookie, error) {
-	if c.RawClient.Jar == nil {
+	if c.Jar == nil {
 		return nil, ErrNilCookieJar
 	}
 
@@ -335,7 +349,7 @@ func (c *Client) FilterCookies(url string) ([]*http.Cookie, error) {
 		return nil, err
 	}
 
-	return c.RawClient.Jar.Cookies(u), nil
+	return c.Jar.Cookies(u), nil
 }
 
 // FilterCookie returns the named cookie to send in a request for the given URL from cookie jar.
@@ -392,9 +406,9 @@ func drainBody(body io.ReadCloser) (r io.Reader, err error) {
 
 func (c *Client) doWithRetry(req *Request, resp *Response) {
 	retry := req.Retry.Merge(defaultRetry)
-	if retry.MaxAttempts > 1 && req.RawRequest.Body != nil &&
-		req.RawRequest.GetBody == nil {
-		body, _ := drainBody(req.RawRequest.Body)
+	if retry.MaxAttempts > 1 && req.Body != nil &&
+		req.GetBody == nil {
+		body, _ := drainBody(req.Body)
 		req.SetBody(body)
 	}
 
@@ -402,11 +416,11 @@ func (c *Client) doWithRetry(req *Request, resp *Response) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	req.RawRequest = req.RawRequest.WithContext(ctx)
+	req.Request = req.Request.WithContext(ctx)
 
 	var err error
 	for i := 0; i < retry.MaxAttempts; i++ {
-		resp.RawResponse, resp.err = c.do(req)
+		resp.Response, resp.err = c.do(req)
 		if err = ctx.Err(); err != nil {
 			resp.err = err
 			return
@@ -421,8 +435,8 @@ func (c *Client) doWithRetry(req *Request, resp *Response) {
 			return
 		}
 
-		if req.RawRequest.GetBody != nil {
-			req.RawRequest.Body, _ = req.RawRequest.GetBody()
+		if req.GetBody != nil {
+			req.Body, _ = req.GetBody()
 		}
 
 		select {
@@ -435,7 +449,7 @@ func (c *Client) doWithRetry(req *Request, resp *Response) {
 }
 
 func (c *Client) do(req *Request) (*http.Response, error) {
-	rawResponse, err := c.RawClient.Do(req.RawRequest)
+	rawResponse, err := c.Client.Do(req.Request)
 	if err != nil {
 		return rawResponse, err
 	}
@@ -460,10 +474,128 @@ func (c *Client) do(req *Request) (*http.Response, error) {
 }
 
 func (c *Client) onAfterResponse(resp *Response) {
+	if resp.err != nil {
+		return
+	}
+
+	var err error
 	for _, hook := range c.afterResponseHooks {
-		hook(resp)
-		if resp.err != nil {
-			break
+		if err = hook(resp); err != nil {
+			resp.err = err
+			return
 		}
+	}
+}
+
+// SetTransport is a client option to set transport of the HTTP client.
+func SetTransport(transport http.RoundTripper) ClientOption {
+	return func(c *Client) error {
+		c.SetTransport(transport)
+		return nil
+	}
+}
+
+// SetRedirect is a client option to set policy of the HTTP client for handling redirects.
+func SetRedirect(policy func(req *http.Request, via []*http.Request) error) ClientOption {
+	return func(c *Client) error {
+		c.SetRedirect(policy)
+		return nil
+	}
+}
+
+// SetCookieJar is a client option to set cookie jar of the HTTP client.
+func SetCookieJar(jar http.CookieJar) ClientOption {
+	return func(c *Client) error {
+		c.SetCookieJar(jar)
+		return nil
+	}
+}
+
+// DisableSession is a client option to make the HTTP client not use cookie jar.
+// Only use if you don't want to keep session for the next HTTP request.
+func DisableSession() ClientOption {
+	return func(c *Client) error {
+		c.DisableSession()
+		return nil
+	}
+}
+
+// SetTimeout is a client option to set timeout of the HTTP client.
+func SetTimeout(timeout time.Duration) ClientOption {
+	return func(c *Client) error {
+		c.SetTimeout(timeout)
+		return nil
+	}
+}
+
+// SetProxy is a client option to set proxy of the HTTP client.
+func SetProxy(proxy func(*http.Request) (*neturl.URL, error)) ClientOption {
+	return func(c *Client) error {
+		return c.SetProxy(proxy)
+	}
+}
+
+// SetProxyFromURL is a client option to set proxy of the HTTP client from a URL.
+func SetProxyFromURL(url string) ClientOption {
+	return func(c *Client) error {
+		return c.SetProxyFromURL(url)
+	}
+}
+
+// DisableProxy is a client option to make the HTTP client not use proxy.
+func DisableProxy() ClientOption {
+	return func(c *Client) error {
+		return c.DisableProxy()
+	}
+}
+
+// SetTLSClientConfig is a client option to set TLS configuration of the HTTP client.
+func SetTLSClientConfig(config *tls.Config) ClientOption {
+	return func(c *Client) error {
+		return c.SetTLSClientConfig(config)
+	}
+}
+
+// AppendClientCerts is a client option to append client certificates to the HTTP client.
+func AppendClientCerts(certs ...tls.Certificate) ClientOption {
+	return func(c *Client) error {
+		return c.AppendClientCerts(certs...)
+	}
+}
+
+// AppendRootCerts is a client option to append root certificates from a pem file to the HTTP client.
+func AppendRootCerts(pemFile string) ClientOption {
+	return func(c *Client) error {
+		return c.AppendRootCerts(pemFile)
+	}
+}
+
+// DisableVerify is a client option to make the HTTP client not verify the server's TLS certificate.
+func DisableVerify() ClientOption {
+	return func(c *Client) error {
+		return c.DisableVerify()
+	}
+}
+
+// SetCookies is a client option to set cookies to cookie jar for the given URL.
+func SetCookies(url string, cookies ...*http.Cookie) ClientOption {
+	return func(c *Client) error {
+		return c.SetCookies(url, cookies...)
+	}
+}
+
+// OnBeforeRequest is a client option to append request hooks into the before request chain.
+func OnBeforeRequest(hooks ...BeforeRequestHook) ClientOption {
+	return func(c *Client) error {
+		c.OnBeforeRequest(hooks...)
+		return nil
+	}
+}
+
+// OnAfterResponse is a client option to append response hooks into the after response chain.
+func OnAfterResponse(hooks ...AfterResponseHook) ClientOption {
+	return func(c *Client) error {
+		c.OnAfterResponse(hooks...)
+		return nil
 	}
 }

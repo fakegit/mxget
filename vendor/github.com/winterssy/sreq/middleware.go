@@ -49,9 +49,9 @@ func SetDefaultReferer(referer string) BeforeRequestHook {
 
 // SetDefaultQuery is a before request hook to set client level query parameters,
 // can be overwrite by request level option.
-func SetDefaultQuery(params Params) BeforeRequestHook {
+func SetDefaultQuery(query Params) BeforeRequestHook {
 	return func(req *Request) error {
-		req.Params.Merge(params)
+		req.Query.Merge(query)
 		return nil
 	}
 }
