@@ -19,17 +19,17 @@ var (
 type (
 	// Error records an error with more details and makes it more readable.
 	Error struct {
-		Op  string
-		Err error
+		op  string
+		err error
 	}
 )
 
 // Error implements error interface.
 func (e *Error) Error() string {
-	return fmt.Sprintf("sreq [%s]: %s", e.Op, e.Err.Error())
+	return fmt.Sprintf("sreq [%s]: %s", e.op, e.err.Error())
 }
 
 // Unwrap unpacks and returns the wrapped err of e.
 func (e *Error) Unwrap() error {
-	return e.Err
+	return e.err
 }

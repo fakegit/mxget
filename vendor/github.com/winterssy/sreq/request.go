@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
@@ -48,14 +49,13 @@ type (
 	// Request wraps the raw HTTP request.
 	Request struct {
 		*http.Request
-		Query   Params
-		Form    Form
-		Headers Headers
-		Host    string
-		Cookies Cookies
-		Retry   *Retry
+		query   Params
+		form    Form
+		headers Headers
+		host    string
+		cookies Cookies
+		retry   *Retry
 		ctx     context.Context
-		err     chan error
 	}
 
 	// RequestOption provides a convenient way to setup Request.
@@ -71,8 +71,8 @@ func NewRequest(method string, url string, opts ...RequestOption) (*Request, err
 	rawRequest, err := http.NewRequest(method, url, nil)
 	if err != nil {
 		return nil, &Error{
-			Op:  "NewRequest",
-			Err: err,
+			op:  "NewRequest",
+			err: err,
 		}
 	}
 
@@ -82,10 +82,10 @@ func NewRequest(method string, url string, opts ...RequestOption) (*Request, err
 	}
 	req := &Request{
 		Request: rawRequest,
-		Query:   query,
-		Form:    make(Form),
-		Headers: make(Headers),
-		Cookies: make(Cookies),
+		query:   query,
+		form:    make(Form),
+		headers: make(Headers),
+		cookies: make(Cookies),
 	}
 	for _, opt := range opts {
 		if err = opt(req); err != nil {
@@ -95,46 +95,41 @@ func NewRequest(method string, url string, opts ...RequestOption) (*Request, err
 	return req, err
 }
 
-// Sync syncs Request's data into the raw HTTP request.
-func (req *Request) Sync() *http.Request {
-	req.syncQuery()
-	req.syncForm()
-	req.syncHeaders()
-	req.syncHost()
-	req.syncCookies()
-	return req.Request
-}
-
-func (req *Request) syncQuery() {
-	if len(req.Query) != 0 {
-		req.URL.RawQuery = req.Query.URLEncode(true)
+// Decode translates req and returns the equivalent raw HTTP request.
+func (req *Request) Decode() *http.Request {
+	if len(req.query) != 0 {
+		req.URL.RawQuery = req.query.URLEncode(true)
 	}
-}
 
-func (req *Request) syncForm() {
-	if len(req.Form) != 0 {
+	if len(req.form) != 0 {
 		req.SetContentType("application/x-www-form-urlencoded")
-		req.SetBody(strings.NewReader(req.Form.URLEncode(true)))
+		req.SetBody(strings.NewReader(req.form.URLEncode(true)))
 	}
-}
 
-func (req *Request) syncHeaders() {
-	req.Headers.SetDefault("User-Agent", defaultUserAgent)
-	req.Header = req.Headers.Decode(true)
-}
+	req.headers.SetDefault("User-Agent", defaultUserAgent)
+	req.Header = req.headers.Decode(true)
 
-func (req *Request) syncHost() {
-	if req.Host != "" {
-		req.Request.Host = req.Host
+	if req.host != "" {
+		req.Host = req.host
 	}
-}
 
-func (req *Request) syncCookies() {
-	if len(req.Cookies) != 0 {
-		for _, c := range req.Cookies.Decode() {
+	if len(req.cookies) != 0 {
+		for _, c := range req.cookies.Decode() {
 			req.AddCookie(c)
 		}
 	}
+
+	req.retry = req.retry.Merge(defaultRetry)
+	if req.retry.MaxAttempts > 1 && req.Body != nil && req.GetBody == nil {
+		body, _ := drainBody(req.Body)
+		req.SetBody(body)
+	}
+
+	if req.ctx != nil {
+		req.Request = req.Request.WithContext(req.ctx)
+	}
+
+	return req.Request
 }
 
 // SetBody sets body for the HTTP request.
@@ -194,37 +189,37 @@ func (req *Request) SetBody(body io.Reader) *Request {
 
 // SetHost sets host for the HTTP request.
 func (req *Request) SetHost(host string) *Request {
-	req.Host = host
+	req.host = host
 	return req
 }
 
 // SetHeaders sets headers for the HTTP request.
 func (req *Request) SetHeaders(headers Headers) *Request {
-	req.Headers.Update(headers)
+	req.headers.Update(headers)
 	return req
 }
 
 // SetContentType sets Content-Type header value for the HTTP request.
 func (req *Request) SetContentType(contentType string) *Request {
-	req.Headers.Set("Content-Type", contentType)
+	req.headers.Set("Content-Type", contentType)
 	return req
 }
 
 // SetUserAgent sets User-Agent header value for the HTTP request.
 func (req *Request) SetUserAgent(userAgent string) *Request {
-	req.Headers.Set("User-Agent", userAgent)
+	req.headers.Set("User-Agent", userAgent)
 	return req
 }
 
 // SetReferer sets Referer header value for the HTTP request.
 func (req *Request) SetReferer(referer string) *Request {
-	req.Headers.Set("Referer", referer)
+	req.headers.Set("Referer", referer)
 	return req
 }
 
 // SetQuery sets query parameters for the HTTP request.
 func (req *Request) SetQuery(query Params) *Request {
-	req.Query.Update(query)
+	req.query.Update(query)
 	return req
 }
 
@@ -243,7 +238,7 @@ func (req *Request) SetText(text string) *Request {
 
 // SetForm sets form payload for the HTTP request.
 func (req *Request) SetForm(form Form) *Request {
-	req.Form.Update(form)
+	req.form.Update(form)
 	return req
 }
 
@@ -252,8 +247,8 @@ func (req *Request) SetJSON(data interface{}, escapeHTML bool) error {
 	b, err := jsonMarshal(data, "", "", escapeHTML)
 	if err != nil {
 		return &Error{
-			Op:  "Request.SetJSON",
-			Err: err,
+			op:  "Request.SetJSON",
+			err: err,
 		}
 	}
 
@@ -267,8 +262,8 @@ func (req *Request) SetXML(data interface{}) error {
 	b, err := xml.Marshal(data)
 	if err != nil {
 		return &Error{
-			Op:  "Request.SetXML",
-			Err: err,
+			op:  "Request.SetXML",
+			err: err,
 		}
 	}
 
@@ -285,7 +280,8 @@ func escapeQuotes(s string) string {
 
 func setMultipartFiles(mw *multipart.Writer, files Files) error {
 	const (
-		fileFormat = `form-data; name="%s"; filename="%s"`
+		fileFormat      = `form-data; name="%s"; filename="%s"`
+		defaultFilename = "file"
 	)
 
 	var (
@@ -295,7 +291,7 @@ func setMultipartFiles(mw *multipart.Writer, files Files) error {
 	for k, v := range files {
 		filename := v.Filename
 		if filename == "" {
-			return fmt.Errorf("filename of [%s] not specified", k)
+			filename = defaultFilename
 		}
 
 		r := bufio.NewReader(v)
@@ -335,7 +331,6 @@ func setMultipartForm(mw *multipart.Writer, form Form) {
 
 // SetMultipart sets multipart payload for the HTTP request.
 func (req *Request) SetMultipart(files Files, form Form) *Request {
-	req.err = make(chan error, 1)
 	pr, pw := io.Pipe()
 	mw := multipart.NewWriter(pw)
 	go func() {
@@ -344,10 +339,7 @@ func (req *Request) SetMultipart(files Files, form Form) *Request {
 
 		err := setMultipartFiles(mw, files)
 		if err != nil {
-			req.err <- &Error{
-				Op:  "Request.SetMultipart",
-				Err: err,
-			}
+			log.Printf("sreq [Request.SetMultipart]: %s", err.Error())
 			return
 		}
 
@@ -363,7 +355,7 @@ func (req *Request) SetMultipart(files Files, form Form) *Request {
 
 // SetCookies sets cookies for the HTTP request.
 func (req *Request) SetCookies(cookies Cookies) *Request {
-	req.Cookies.Update(cookies)
+	req.cookies.Update(cookies)
 	return req
 }
 
@@ -374,13 +366,13 @@ func basicAuth(username, password string) string {
 
 // SetBasicAuth sets basic authentication for the HTTP request.
 func (req *Request) SetBasicAuth(username string, password string) *Request {
-	req.Headers.Set("Authorization", "Basic "+basicAuth(username, password))
+	req.headers.Set("Authorization", "Basic "+basicAuth(username, password))
 	return req
 }
 
 // SetBearerToken sets bearer token for the HTTP request.
 func (req *Request) SetBearerToken(token string) *Request {
-	req.Headers.Set("Authorization", "Bearer "+token)
+	req.headers.Set("Authorization", "Bearer "+token)
 	return req
 }
 
@@ -392,7 +384,7 @@ func (req *Request) SetContext(ctx context.Context) *Request {
 
 // SetRetry specifies the retry policy for handling retries.
 func (req *Request) SetRetry(retry *Retry) *Request {
-	req.Retry = retry
+	req.retry = retry
 	return req
 }
 

@@ -14,7 +14,7 @@ import (
 
 const (
 	// Version of sreq.
-	Version = "0.9.6"
+	Version = "0.9.7"
 
 	defaultUserAgent = "go-sreq/" + Version
 )
@@ -42,7 +42,7 @@ type (
 	Files map[string]*File
 
 	// File specifies a file.
-	// To upload a file you must specify its Filename field, otherwise sreq will raise an error.
+	// To upload a file you must specify its Filename field, if not, sreq will use "file" as default.
 	// If you don't specify the MIME field, sreq will detect automatically using http.DetectContentType.
 	File struct {
 		Filename string

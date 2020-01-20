@@ -4,7 +4,7 @@ package sreq
 // can be overwrite by request level option.
 func SetDefaultHost(host string) BeforeRequestHook {
 	return func(req *Request) error {
-		if req.Host == "" {
+		if req.host == "" {
 			req.SetHost(host)
 		}
 		return nil
@@ -15,7 +15,7 @@ func SetDefaultHost(host string) BeforeRequestHook {
 // can be overwrite by request level option.
 func SetDefaultHeaders(headers Headers) BeforeRequestHook {
 	return func(req *Request) error {
-		req.Headers.Merge(headers)
+		req.headers.Merge(headers)
 		return nil
 	}
 }
@@ -24,7 +24,7 @@ func SetDefaultHeaders(headers Headers) BeforeRequestHook {
 // can be overwrite by request level option.
 func SetDefaultContentType(contentType string) BeforeRequestHook {
 	return func(req *Request) error {
-		req.Headers.SetDefault("Content-Type", contentType)
+		req.headers.SetDefault("Content-Type", contentType)
 		return nil
 	}
 }
@@ -33,7 +33,7 @@ func SetDefaultContentType(contentType string) BeforeRequestHook {
 // can be overwrite by request level option.
 func SetDefaultUserAgent(userAgent string) BeforeRequestHook {
 	return func(req *Request) error {
-		req.Headers.SetDefault("User-Agent", userAgent)
+		req.headers.SetDefault("User-Agent", userAgent)
 		return nil
 	}
 }
@@ -42,7 +42,7 @@ func SetDefaultUserAgent(userAgent string) BeforeRequestHook {
 // can be overwrite by request level option.
 func SetDefaultReferer(referer string) BeforeRequestHook {
 	return func(req *Request) error {
-		req.Headers.SetDefault("Referer", referer)
+		req.headers.SetDefault("Referer", referer)
 		return nil
 	}
 }
@@ -51,7 +51,7 @@ func SetDefaultReferer(referer string) BeforeRequestHook {
 // can be overwrite by request level option.
 func SetDefaultQuery(query Params) BeforeRequestHook {
 	return func(req *Request) error {
-		req.Query.Merge(query)
+		req.query.Merge(query)
 		return nil
 	}
 }
@@ -60,7 +60,7 @@ func SetDefaultQuery(query Params) BeforeRequestHook {
 // can be overwrite by request level option.
 func SetDefaultForm(form Form) BeforeRequestHook {
 	return func(req *Request) error {
-		req.Form.Merge(form)
+		req.form.Merge(form)
 		return nil
 	}
 }
@@ -69,7 +69,7 @@ func SetDefaultForm(form Form) BeforeRequestHook {
 // can be overwrite by request level option.
 func SetDefaultCookies(cookies Cookies) BeforeRequestHook {
 	return func(req *Request) error {
-		req.Cookies.Merge(cookies)
+		req.cookies.Merge(cookies)
 		return nil
 	}
 }
@@ -78,7 +78,7 @@ func SetDefaultCookies(cookies Cookies) BeforeRequestHook {
 // can be overwrite by request level option.
 func SetDefaultBasicAuth(username string, password string) BeforeRequestHook {
 	return func(req *Request) error {
-		req.Headers.SetDefault("Authorization", "Basic "+basicAuth(username, password))
+		req.headers.SetDefault("Authorization", "Basic "+basicAuth(username, password))
 		return nil
 	}
 }
@@ -87,7 +87,7 @@ func SetDefaultBasicAuth(username string, password string) BeforeRequestHook {
 // can be overwrite by request level option.
 func SetDefaultBearerToken(token string) BeforeRequestHook {
 	return func(req *Request) error {
-		req.Headers.SetDefault("Authorization", "Bearer "+token)
+		req.headers.SetDefault("Authorization", "Bearer "+token)
 		return nil
 	}
 }
@@ -96,7 +96,7 @@ func SetDefaultBearerToken(token string) BeforeRequestHook {
 // can be overwrite by request level option.
 func SetDefaultRetry(retry *Retry) BeforeRequestHook {
 	return func(req *Request) error {
-		req.Retry = req.Retry.Merge(retry)
+		req.retry = req.retry.Merge(retry)
 		return nil
 	}
 }

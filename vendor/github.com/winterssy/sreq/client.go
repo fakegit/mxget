@@ -3,7 +3,6 @@ package sreq
 import (
 	"bytes"
 	"compress/gzip"
-	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"io"
@@ -120,8 +119,8 @@ func (c *Client) SetProxy(proxy func(*http.Request) (*neturl.URL, error)) error 
 	t, err := c.httpTransport()
 	if err != nil {
 		return &Error{
-			Op:  "Client.SetProxy",
-			Err: err,
+			op:  "Client.SetProxy",
+			err: err,
 		}
 	}
 
@@ -135,8 +134,8 @@ func (c *Client) SetProxyFromURL(url string) error {
 	fixedURL, err := neturl.Parse(url)
 	if err != nil {
 		return &Error{
-			Op:  "Client.SetProxyFromURL",
-			Err: err,
+			op:  "Client.SetProxyFromURL",
+			err: err,
 		}
 	}
 
@@ -153,8 +152,8 @@ func (c *Client) SetTLSClientConfig(config *tls.Config) error {
 	t, err := c.httpTransport()
 	if err != nil {
 		return &Error{
-			Op:  "Client.SetTLSClientConfig",
-			Err: err,
+			op:  "Client.SetTLSClientConfig",
+			err: err,
 		}
 	}
 
@@ -168,8 +167,8 @@ func (c *Client) AppendClientCerts(certs ...tls.Certificate) error {
 	t, err := c.httpTransport()
 	if err != nil {
 		return &Error{
-			Op:  "Client.AppendClientCerts",
-			Err: err,
+			op:  "Client.AppendClientCerts",
+			err: err,
 		}
 	}
 
@@ -187,16 +186,16 @@ func (c *Client) AppendRootCerts(pemFile string) error {
 	pemCerts, err := ioutil.ReadFile(pemFile)
 	if err != nil {
 		return &Error{
-			Op:  "Client.AppendRootCerts",
-			Err: err,
+			op:  "Client.AppendRootCerts",
+			err: err,
 		}
 	}
 
 	t, err := c.httpTransport()
 	if err != nil {
 		return &Error{
-			Op:  "Client.AppendRootCerts",
-			Err: err,
+			op:  "Client.AppendRootCerts",
+			err: err,
 		}
 	}
 
@@ -216,8 +215,8 @@ func (c *Client) DisableVerify() error {
 	t, err := c.httpTransport()
 	if err != nil {
 		return &Error{
-			Op:  "Client.DisableVerify",
-			Err: err,
+			op:  "Client.DisableVerify",
+			err: err,
 		}
 	}
 
@@ -234,16 +233,16 @@ func (c *Client) DisableVerify() error {
 func (c *Client) SetCookies(url string, cookies ...*http.Cookie) error {
 	if c.Jar == nil {
 		return &Error{
-			Op:  "Client.SetCookies",
-			Err: ErrNilCookieJar,
+			op:  "Client.SetCookies",
+			err: ErrNilCookieJar,
 		}
 	}
 
 	u, err := neturl.Parse(url)
 	if err != nil {
 		return &Error{
-			Op:  "Client.SetCookies",
-			Err: err,
+			op:  "Client.SetCookies",
+			err: err,
 		}
 	}
 
@@ -377,7 +376,6 @@ func (c *Client) Do(req *Request) *Response {
 		return resp
 	}
 
-	req.Sync()
 	c.doWithRetry(req, resp)
 	c.onAfterResponse(resp)
 	return resp
@@ -405,42 +403,27 @@ func drainBody(body io.ReadCloser) (r io.Reader, err error) {
 }
 
 func (c *Client) doWithRetry(req *Request, resp *Response) {
-	retry := req.Retry.Merge(defaultRetry)
-	if retry.MaxAttempts > 1 && req.Body != nil &&
-		req.GetBody == nil {
-		body, _ := drainBody(req.Body)
-		req.SetBody(body)
-	}
-
-	ctx := req.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	req.Request = req.Request.WithContext(ctx)
+	rawRequest := req.Decode()
+	ctx := rawRequest.Context()
 
 	var err error
-	for i := 0; i < retry.MaxAttempts; i++ {
-		resp.Response, resp.err = c.do(req)
+	for i := 0; i < req.retry.MaxAttempts; i++ {
+		resp.Response, resp.err = c.do(rawRequest)
 		if err = ctx.Err(); err != nil {
 			resp.err = err
 			return
 		}
 
-		if i == retry.MaxAttempts-1 {
+		if i == req.retry.MaxAttempts-1 || !req.retry.Trigger(resp) {
 			return
 		}
 
-		shouldRetry := retry.Trigger(resp)
-		if !shouldRetry {
-			return
-		}
-
-		if req.GetBody != nil {
-			req.Body, _ = req.GetBody()
+		if rawRequest.GetBody != nil {
+			rawRequest.Body, _ = rawRequest.GetBody()
 		}
 
 		select {
-		case <-time.After(retry.Backoff(retry.WaitTime, retry.MaxWaitTime, i, resp)):
+		case <-time.After(req.retry.Backoff(req.retry.WaitTime, req.retry.MaxWaitTime, i, resp)):
 		case <-ctx.Done():
 			resp.err = ctx.Err()
 			return
@@ -448,16 +431,10 @@ func (c *Client) doWithRetry(req *Request, resp *Response) {
 	}
 }
 
-func (c *Client) do(req *Request) (*http.Response, error) {
-	rawResponse, err := c.Client.Do(req.Request)
+func (c *Client) do(rawRequest *http.Request) (*http.Response, error) {
+	rawResponse, err := c.Client.Do(rawRequest)
 	if err != nil {
 		return rawResponse, err
-	}
-
-	select {
-	case err = <-req.err:
-		return rawResponse, err
-	default:
 	}
 
 	if strings.EqualFold(rawResponse.Header.Get("Content-Encoding"), "gzip") &&
