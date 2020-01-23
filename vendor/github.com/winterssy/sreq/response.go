@@ -35,6 +35,17 @@ func (resp *Response) Raw() (*http.Response, error) {
 	return resp.Response, resp.err
 }
 
+// Prefetch reads from the HTTP response body until an error or EOF and keeps the data in memory for reuse.
+func (resp *Response) Prefetch() *Response {
+	if resp.err != nil || resp.content != nil {
+		return resp
+	}
+	defer resp.Body.Close()
+
+	resp.content, resp.err = ioutil.ReadAll(resp.Body)
+	return resp
+}
+
 // Content decodes the HTTP response body to bytes.
 func (resp *Response) Content() ([]byte, error) {
 	if resp.err != nil || resp.content != nil {
@@ -42,9 +53,7 @@ func (resp *Response) Content() ([]byte, error) {
 	}
 	defer resp.Body.Close()
 
-	var err error
-	resp.content, err = ioutil.ReadAll(resp.Body)
-	return resp.content, err
+	return ioutil.ReadAll(resp.Body)
 }
 
 // Text decodes the HTTP response body and returns the text representation of its raw data
@@ -69,16 +78,9 @@ func (resp *Response) JSON(v interface{}) error {
 	if resp.content != nil {
 		return json.Unmarshal(resp.content, v)
 	}
+	defer resp.Body.Close()
 
-	buf := acquireBuffer()
-	tee := io.TeeReader(resp.Body, buf)
-	defer func() {
-		resp.Body.Close()
-		resp.content = buf.Bytes()
-		releaseBuffer(buf)
-	}()
-
-	return json.NewDecoder(tee).Decode(v)
+	return json.NewDecoder(resp.Body).Decode(v)
 }
 
 // H decodes the HTTP response body and unmarshals its JSON-encoded data into an H instance.
@@ -96,16 +98,9 @@ func (resp *Response) XML(v interface{}) error {
 	if resp.content != nil {
 		return xml.Unmarshal(resp.content, v)
 	}
+	defer resp.Body.Close()
 
-	buf := acquireBuffer()
-	tee := io.TeeReader(resp.Body, buf)
-	defer func() {
-		resp.Body.Close()
-		resp.content = buf.Bytes()
-		releaseBuffer(buf)
-	}()
-
-	return xml.NewDecoder(tee).Decode(v)
+	return xml.NewDecoder(resp.Body).Decode(v)
 }
 
 // Cookies returns the HTTP response cookies.
@@ -145,7 +140,7 @@ func (resp *Response) EnsureStatus2xx() *Response {
 	}
 
 	if resp.StatusCode/100 != 2 {
-		resp.err = fmt.Errorf("sreq: bad status: %s", resp.Status)
+		resp.err = fmt.Errorf("sreq: bad status (%s)", resp.Status)
 	}
 	return resp
 }
@@ -157,13 +152,12 @@ func (resp *Response) EnsureStatus(code int) *Response {
 	}
 
 	if resp.StatusCode != code {
-		resp.err = fmt.Errorf("sreq: bad status: %s", resp.Status)
+		resp.err = fmt.Errorf("sreq: bad status (%s)", resp.Status)
 	}
 	return resp
 }
 
 // Save saves the HTTP response into a file.
-// Note: Save won't cache the HTTP response body for reuse.
 func (resp *Response) Save(filename string, perm os.FileMode) error {
 	if resp.err != nil {
 		return resp.err
@@ -186,7 +180,6 @@ func (resp *Response) Save(filename string, perm os.FileMode) error {
 
 // Verbose makes the HTTP request and its response more talkative.
 // It's similar to "curl -v", used for debug.
-// Note: Verbose won't cache the HTTP response body for reuse.
 func (resp *Response) Verbose(w io.Writer, withBody bool) (err error) {
 	if resp.err != nil {
 		return resp.err

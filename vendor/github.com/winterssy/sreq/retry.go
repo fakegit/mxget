@@ -57,13 +57,13 @@ func (r *Retry) Merge(r2 *Retry) *Retry {
 		return r2
 	}
 
-	if r.MaxAttempts == 0 {
+	if r.MaxAttempts <= 0 {
 		r.MaxAttempts = r2.MaxAttempts
 	}
-	if r.WaitTime == 0 {
+	if r.WaitTime <= 0 {
 		r.WaitTime = r2.WaitTime
 	}
-	if r.MaxWaitTime == 0 {
+	if r.MaxWaitTime <= 0 {
 		r.MaxWaitTime = r2.MaxWaitTime
 	}
 	if r.Backoff == nil {

@@ -1,11 +1,9 @@
 package sreq
 
 import (
-	"bytes"
 	"compress/gzip"
 	"crypto/tls"
 	"crypto/x509"
-	"io"
 	"io/ioutil"
 	"net/http"
 	"net/http/cookiejar"
@@ -17,8 +15,7 @@ import (
 )
 
 const (
-	// DefaultTimeout is the preset timeout.
-	DefaultTimeout = 120 * time.Second
+	defaultTimeout = 120 * time.Second
 )
 
 var (
@@ -49,7 +46,7 @@ func New() *Client {
 	rawClient := &http.Client{
 		Transport: DefaultTransport(),
 		Jar:       jar,
-		Timeout:   DefaultTimeout,
+		Timeout:   defaultTimeout,
 	}
 	client := &Client{
 		Client: rawClient,
@@ -76,6 +73,12 @@ func (c *Client) httpTransport() (*http.Transport, error) {
 	}
 
 	return t, nil
+}
+
+// SetHTTPClient replaces the raw HTTP client.
+func (c *Client) SetHTTPClient(rawClient *http.Client) *Client {
+	c.Client = rawClient
+	return c
 }
 
 // SetTransport sets transport of the HTTP client.
@@ -108,7 +111,7 @@ func (c *Client) DisableSession() *Client {
 	return c
 }
 
-// SetTimeout sets timeout of the HTTP client.
+// SetTimeout sets timeout of the HTTP client, default is 120s.
 func (c *Client) SetTimeout(timeout time.Duration) *Client {
 	c.Timeout = timeout
 	return c
@@ -119,8 +122,8 @@ func (c *Client) SetProxy(proxy func(*http.Request) (*neturl.URL, error)) error 
 	t, err := c.httpTransport()
 	if err != nil {
 		return &Error{
-			op:  "Client.SetProxy",
-			err: err,
+			Op:  "Client.SetProxy",
+			Err: err,
 		}
 	}
 
@@ -134,8 +137,8 @@ func (c *Client) SetProxyFromURL(url string) error {
 	fixedURL, err := neturl.Parse(url)
 	if err != nil {
 		return &Error{
-			op:  "Client.SetProxyFromURL",
-			err: err,
+			Op:  "Client.SetProxyFromURL",
+			Err: err,
 		}
 	}
 
@@ -152,8 +155,8 @@ func (c *Client) SetTLSClientConfig(config *tls.Config) error {
 	t, err := c.httpTransport()
 	if err != nil {
 		return &Error{
-			op:  "Client.SetTLSClientConfig",
-			err: err,
+			Op:  "Client.SetTLSClientConfig",
+			Err: err,
 		}
 	}
 
@@ -167,8 +170,8 @@ func (c *Client) AppendClientCerts(certs ...tls.Certificate) error {
 	t, err := c.httpTransport()
 	if err != nil {
 		return &Error{
-			op:  "Client.AppendClientCerts",
-			err: err,
+			Op:  "Client.AppendClientCerts",
+			Err: err,
 		}
 	}
 
@@ -186,16 +189,16 @@ func (c *Client) AppendRootCerts(pemFile string) error {
 	pemCerts, err := ioutil.ReadFile(pemFile)
 	if err != nil {
 		return &Error{
-			op:  "Client.AppendRootCerts",
-			err: err,
+			Op:  "Client.AppendRootCerts",
+			Err: err,
 		}
 	}
 
 	t, err := c.httpTransport()
 	if err != nil {
 		return &Error{
-			op:  "Client.AppendRootCerts",
-			err: err,
+			Op:  "Client.AppendRootCerts",
+			Err: err,
 		}
 	}
 
@@ -215,8 +218,8 @@ func (c *Client) DisableVerify() error {
 	t, err := c.httpTransport()
 	if err != nil {
 		return &Error{
-			op:  "Client.DisableVerify",
-			err: err,
+			Op:  "Client.DisableVerify",
+			Err: err,
 		}
 	}
 
@@ -233,16 +236,16 @@ func (c *Client) DisableVerify() error {
 func (c *Client) SetCookies(url string, cookies ...*http.Cookie) error {
 	if c.Jar == nil {
 		return &Error{
-			op:  "Client.SetCookies",
-			err: ErrNilCookieJar,
+			Op:  "Client.SetCookies",
+			Err: ErrNilCookieJar,
 		}
 	}
 
 	u, err := neturl.Parse(url)
 	if err != nil {
 		return &Error{
-			op:  "Client.SetCookies",
-			err: err,
+			Op:  "Client.SetCookies",
+			Err: err,
 		}
 	}
 
@@ -391,30 +394,28 @@ func (c *Client) onBeforeRequest(req *Request) error {
 	return err
 }
 
-func drainBody(body io.ReadCloser) (r io.Reader, err error) {
-	var buf bytes.Buffer
-	if _, err = buf.ReadFrom(body); err != nil {
-		return nil, err
-	}
-	if err = body.Close(); err != nil {
-		return nil, err
-	}
-	return &buf, nil
-}
-
 func (c *Client) doWithRetry(req *Request, resp *Response) {
+	retry := req.retry.Merge(defaultRetry)
+	if retry.MaxAttempts > 1 && req.Body != nil && req.GetBody == nil {
+		body, err := drainBody(req.Body)
+		if err != nil {
+			resp.err = err
+			return
+		}
+		req.SetBody(body)
+	}
+
 	rawRequest := req.Decode()
 	ctx := rawRequest.Context()
-
 	var err error
-	for i := 0; i < req.retry.MaxAttempts; i++ {
+	for i := 0; i < retry.MaxAttempts; i++ {
 		resp.Response, resp.err = c.do(rawRequest)
 		if err = ctx.Err(); err != nil {
 			resp.err = err
 			return
 		}
 
-		if i == req.retry.MaxAttempts-1 || !req.retry.Trigger(resp) {
+		if i == retry.MaxAttempts-1 || !retry.Trigger(resp) {
 			return
 		}
 
@@ -423,7 +424,7 @@ func (c *Client) doWithRetry(req *Request, resp *Response) {
 		}
 
 		select {
-		case <-time.After(req.retry.Backoff(req.retry.WaitTime, req.retry.MaxWaitTime, i, resp)):
+		case <-time.After(req.retry.Backoff(retry.WaitTime, retry.MaxWaitTime, i, resp)):
 		case <-ctx.Done():
 			resp.err = ctx.Err()
 			return
@@ -461,6 +462,14 @@ func (c *Client) onAfterResponse(resp *Response) {
 			resp.err = err
 			return
 		}
+	}
+}
+
+// SetHTTPClient is a client option to replace the raw HTTP client.
+func SetHTTPClient(rawClient *http.Client) ClientOption {
+	return func(c *Client) error {
+		c.SetHTTPClient(rawClient)
+		return nil
 	}
 }
 

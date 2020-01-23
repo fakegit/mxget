@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"strconv"
-	"strings"
 	"sync"
 	"unsafe"
 )
@@ -69,7 +68,7 @@ func toJSON(v interface{}, prefix string, indent string, escapeHTML bool) string
 		return "{}"
 	}
 
-	return strings.TrimSuffix(b2s(b), "\n")
+	return b2s(b)
 }
 
 func jsonMarshal(v interface{}, prefix string, indent string, escapeHTML bool) ([]byte, error) {
@@ -80,5 +79,5 @@ func jsonMarshal(v interface{}, prefix string, indent string, escapeHTML bool) (
 	encoder.SetIndent(prefix, indent)
 	encoder.SetEscapeHTML(escapeHTML)
 	err := encoder.Encode(v)
-	return buf.Bytes(), err
+	return bytes.TrimSpace(buf.Bytes()), err
 }

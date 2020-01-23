@@ -1,5 +1,10 @@
 package sreq
 
+import (
+	neturl "net/url"
+	"path"
+)
+
 // SetDefaultHost is a before request hook set client level host,
 // can be overwrite by request level option.
 func SetDefaultHost(host string) BeforeRequestHook {
@@ -34,6 +39,15 @@ func SetDefaultContentType(contentType string) BeforeRequestHook {
 func SetDefaultUserAgent(userAgent string) BeforeRequestHook {
 	return func(req *Request) error {
 		req.headers.SetDefault("User-Agent", userAgent)
+		return nil
+	}
+}
+
+// SetDefaultOrigin is a before request hook to set client level Origin header value,
+// can be overwrite by request level option.
+func SetDefaultOrigin(origin string) BeforeRequestHook {
+	return func(req *Request) error {
+		req.headers.SetDefault("Origin", origin)
 		return nil
 	}
 }
@@ -97,6 +111,27 @@ func SetDefaultBearerToken(token string) BeforeRequestHook {
 func SetDefaultRetry(retry *Retry) BeforeRequestHook {
 	return func(req *Request) error {
 		req.retry = req.retry.Merge(retry)
+		return nil
+	}
+}
+
+// SetReverseProxy is a before request hook to set reverse proxy for HTTP requests.
+func SetReverseProxy(target string, publicPaths ...string) BeforeRequestHook {
+	return func(req *Request) error {
+		u, err := neturl.Parse(target)
+		if err != nil {
+			return err
+		}
+
+		req.URL.Scheme = u.Scheme
+		req.URL.Host = u.Host
+		req.Host = u.Host
+		req.SetOrigin(target)
+
+		if len(publicPaths) > 0 {
+			publicPath := path.Join(publicPaths...)
+			req.URL.Path = path.Join(publicPath, req.URL.Path)
+		}
 		return nil
 	}
 }

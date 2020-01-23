@@ -12,6 +12,7 @@ import (
 	"log"
 	"mime/multipart"
 	"net/http"
+	"net/http/httputil"
 	"net/textproto"
 	"strings"
 )
@@ -71,18 +72,14 @@ func NewRequest(method string, url string, opts ...RequestOption) (*Request, err
 	rawRequest, err := http.NewRequest(method, url, nil)
 	if err != nil {
 		return nil, &Error{
-			op:  "NewRequest",
-			err: err,
+			Op:  "http.NewRequest",
+			Err: err,
 		}
 	}
 
-	query := make(Params)
-	for k, v := range rawRequest.URL.Query() {
-		query.Set(k, v)
-	}
 	req := &Request{
 		Request: rawRequest,
-		query:   query,
+		query:   make(Params),
 		form:    make(Form),
 		headers: make(Headers),
 		cookies: make(Cookies),
@@ -93,43 +90,6 @@ func NewRequest(method string, url string, opts ...RequestOption) (*Request, err
 		}
 	}
 	return req, err
-}
-
-// Decode translates req and returns the equivalent raw HTTP request.
-func (req *Request) Decode() *http.Request {
-	if len(req.query) != 0 {
-		req.URL.RawQuery = req.query.URLEncode(true)
-	}
-
-	if len(req.form) != 0 {
-		req.SetContentType("application/x-www-form-urlencoded")
-		req.SetBody(strings.NewReader(req.form.URLEncode(true)))
-	}
-
-	req.headers.SetDefault("User-Agent", defaultUserAgent)
-	req.Header = req.headers.Decode(true)
-
-	if req.host != "" {
-		req.Host = req.host
-	}
-
-	if len(req.cookies) != 0 {
-		for _, c := range req.cookies.Decode() {
-			req.AddCookie(c)
-		}
-	}
-
-	req.retry = req.retry.Merge(defaultRetry)
-	if req.retry.MaxAttempts > 1 && req.Body != nil && req.GetBody == nil {
-		body, _ := drainBody(req.Body)
-		req.SetBody(body)
-	}
-
-	if req.ctx != nil {
-		req.Request = req.Request.WithContext(req.ctx)
-	}
-
-	return req.Request
 }
 
 // SetBody sets body for the HTTP request.
@@ -211,6 +171,12 @@ func (req *Request) SetUserAgent(userAgent string) *Request {
 	return req
 }
 
+// SetOrigin sets Origin header value for the HTTP request.
+func (req *Request) SetOrigin(origin string) *Request {
+	req.headers.Set("Origin", origin)
+	return req
+}
+
 // SetReferer sets Referer header value for the HTTP request.
 func (req *Request) SetReferer(referer string) *Request {
 	req.headers.Set("Referer", referer)
@@ -247,8 +213,8 @@ func (req *Request) SetJSON(data interface{}, escapeHTML bool) error {
 	b, err := jsonMarshal(data, "", "", escapeHTML)
 	if err != nil {
 		return &Error{
-			op:  "Request.SetJSON",
-			err: err,
+			Op:  "Request.SetJSON",
+			Err: err,
 		}
 	}
 
@@ -262,8 +228,8 @@ func (req *Request) SetXML(data interface{}) error {
 	b, err := xml.Marshal(data)
 	if err != nil {
 		return &Error{
-			op:  "Request.SetXML",
-			err: err,
+			Op:  "Request.SetXML",
+			Err: err,
 		}
 	}
 
@@ -289,13 +255,13 @@ func setMultipartFiles(mw *multipart.Writer, files Files) error {
 		err  error
 	)
 	for k, v := range files {
-		filename := v.Filename
+		filename := v.Filename()
 		if filename == "" {
 			filename = defaultFilename
 		}
 
 		r := bufio.NewReader(v)
-		cType := v.MIME
+		cType := v.MIME()
 		if cType == "" {
 			data, _ := r.Peek(512)
 			cType = http.DetectContentType(data)
@@ -307,12 +273,12 @@ func setMultipartFiles(mw *multipart.Writer, files Files) error {
 		h.Set("Content-Type", cType)
 		part, err = mw.CreatePart(h)
 		if err != nil {
-			return err
+			return fmt.Errorf("can't create multipart section for form (%s=@%s): %s", k, filename, err.Error())
 		}
 
 		_, err = io.Copy(part, r)
 		if err != nil {
-			return err
+			return fmt.Errorf("can't read file of form (%s=@%s): %s", k, filename, err.Error())
 		}
 
 		v.Close()
@@ -388,6 +354,50 @@ func (req *Request) SetRetry(retry *Retry) *Request {
 	return req
 }
 
+// Decode translates req and returns the equivalent raw HTTP request.
+func (req *Request) Decode() *http.Request {
+	if len(req.query) != 0 {
+		for k, v := range req.URL.Query() {
+			req.query.SetDefault(k, v)
+		}
+		req.URL.RawQuery = req.query.URLEncode(true)
+	}
+
+	if len(req.form) != 0 {
+		req.SetContentType("application/x-www-form-urlencoded")
+		req.SetBody(strings.NewReader(req.form.URLEncode(true)))
+	}
+
+	req.headers.SetDefault("User-Agent", defaultUserAgent)
+	req.Header = req.headers.Decode(true)
+
+	if req.host != "" {
+		req.Host = req.host
+	}
+
+	if len(req.cookies) != 0 {
+		for _, c := range req.cookies.Decode() {
+			req.AddCookie(c)
+		}
+	}
+
+	if req.ctx != nil {
+		req.Request = req.Request.WithContext(req.ctx)
+	}
+
+	return req.Request
+}
+
+// Dump returns the HTTP/1.x wire representation of req.
+func (req *Request) Dump(withBody bool) ([]byte, error) {
+	return httputil.DumpRequestOut(req.Decode(), withBody)
+}
+
+// Export converts req to CURL command line.
+func (req *Request) Export() (string, error) {
+	return GenCURLCommand(req.Decode())
+}
+
 // WithBody is a request option to set body for the HTTP request.
 func WithBody(body io.Reader) RequestOption {
 	return func(req *Request) error {
@@ -424,6 +434,14 @@ func WithContentType(contentType string) RequestOption {
 func WithUserAgent(userAgent string) RequestOption {
 	return func(req *Request) error {
 		req.SetUserAgent(userAgent)
+		return nil
+	}
+}
+
+// WithOrigin is a request option to set Origin header value for the HTTP request.
+func WithOrigin(origin string) RequestOption {
+	return func(req *Request) error {
+		req.SetOrigin(origin)
 		return nil
 	}
 }

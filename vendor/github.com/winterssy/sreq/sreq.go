@@ -14,9 +14,13 @@ import (
 
 const (
 	// Version of sreq.
-	Version = "0.9.7"
+	Version = "0.9.9"
 
 	defaultUserAgent = "go-sreq/" + Version
+)
+
+var (
+	_ FormFile = (*File)(nil) // *File must implement FormFile interface
 )
 
 type (
@@ -38,16 +42,23 @@ type (
 	// Cookies is a shortcut for map[string]string, used for request cookies.
 	Cookies map[string]string
 
-	// Files maps a string key to a *File type value, used for files of multipart payload.
-	Files map[string]*File
+	// Files maps a string key to a FormFile type value, used for form files of multipart payload.
+	Files map[string]FormFile
 
-	// File specifies a file.
-	// To upload a file you must specify its Filename field, if not, sreq will use "file" as default.
-	// If you don't specify the MIME field, sreq will detect automatically using http.DetectContentType.
+	// FormFile is the interface that specifies a form file of multipart payload.
+	FormFile interface {
+		io.ReadCloser
+		Filename() string
+		MIME() string
+	}
+
+	// File specifies a file to upload, it implements FormFile interface.
+	// Note: To upload a file its filename must be specified, if not, sreq will use "file" as default.
+	// If you don't specify the mime, sreq will detect automatically using http.DetectContentType.
 	File struct {
-		Filename string
 		Body     io.Reader
-		MIME     string
+		filename string
+		mime     string
 	}
 
 	// H is a shortcut for map[string]interface{}, used for JSON unmarshalling.
@@ -233,7 +244,7 @@ func (c Cookies) Decode() []*http.Cookie {
 }
 
 // Get gets the value associated with key.
-func (f Files) Get(key string) *File {
+func (f Files) Get(key string) FormFile {
 	if f == nil {
 		return nil
 	}
@@ -242,7 +253,7 @@ func (f Files) Get(key string) *File {
 }
 
 // Set sets the key to value. It replaces any existing values.
-func (f Files) Set(key string, value *File) {
+func (f Files) Set(key string, value FormFile) {
 	f[key] = value
 }
 
@@ -251,23 +262,33 @@ func (f Files) Del(key string) {
 	delete(f, key)
 }
 
-// NewFile returns a *File instance given a filename and its body.
-func NewFile(filename string, body io.Reader) *File {
+// NewFile returns a *File instance given the body and filename.
+func NewFile(body io.Reader, filename string) *File {
 	return &File{
-		Filename: filename,
 		Body:     body,
+		filename: filename,
 	}
 }
 
-// SetFilename sets Filename field value of f.
+// Filename implements FormFile interface, returns the filename of f.
+func (f *File) Filename() string {
+	return f.filename
+}
+
+// MIME implements FormFile interface, returns the mine of f.
+func (f *File) MIME() string {
+	return f.mime
+}
+
+// SetFilename specifies the filename of f.
 func (f *File) SetFilename(filename string) *File {
-	f.Filename = filename
+	f.filename = filename
 	return f
 }
 
-// SetMIME sets MIME field value of f.
+// SetMIME specifies the mine of f.
 func (f *File) SetMIME(mime string) *File {
-	f.MIME = mime
+	f.mime = mime
 	return f
 }
 
@@ -296,7 +317,7 @@ func Open(filename string) (*File, error) {
 		return nil, err
 	}
 
-	return NewFile(filepath.Base(filename), file), nil
+	return NewFile(file, filepath.Base(filename)), nil
 }
 
 // MustOpen opens the named file and returns a *File instance.
