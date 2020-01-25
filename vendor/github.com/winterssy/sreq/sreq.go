@@ -14,9 +14,9 @@ import (
 
 const (
 	// Version of sreq.
-	Version = "0.9.9"
+	Version = "0.9.10"
 
-	defaultUserAgent = "go-sreq/" + Version
+	defaultUserAgent = "Go-sreq/" + Version
 )
 
 var (

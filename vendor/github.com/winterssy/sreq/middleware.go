@@ -5,13 +5,11 @@ import (
 	"path"
 )
 
-// SetDefaultHost is a before request hook set client level host,
+// SetDefaultHost is a before request hook set client level Host header value,
 // can be overwrite by request level option.
 func SetDefaultHost(host string) BeforeRequestHook {
 	return func(req *Request) error {
-		if req.host == "" {
-			req.SetHost(host)
-		}
+		req.headers.SetDefault("Host", host)
 		return nil
 	}
 }
@@ -108,9 +106,11 @@ func SetDefaultBearerToken(token string) BeforeRequestHook {
 
 // SetDefaultRetry is a before request hook to set client level retry policy,
 // can be overwrite by request level option.
-func SetDefaultRetry(retry *Retry) BeforeRequestHook {
+func SetDefaultRetry(maxAttempts int, backoff Backoff, triggers ...func(resp *Response) bool) BeforeRequestHook {
 	return func(req *Request) error {
-		req.retry = req.retry.Merge(retry)
+		if req.retry == nil {
+			req.SetRetry(maxAttempts, backoff, triggers...)
+		}
 		return nil
 	}
 }

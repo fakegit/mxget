@@ -1,8 +1,8 @@
 # sreq
 
-**[sreq](https://godoc.org/github.com/winterssy/sreq)** is a simple, user-friendly and concurrent safe HTTP request library for Go, inspired by Python **[requests](https://requests.readthedocs.io)**.
+**[sreq](https://godoc.org/github.com/winterssy/sreq)** is a simple, user-friendly and concurrent safe HTTP request library for Go, inspired by Python **[requests](https://requests.readthedocs.io)** .
 
-![Test](https://img.shields.io/github/workflow/status/winterssy/sreq/Test/master?label=Test&logo=appveyor) ![codecov](https://codecov.io/gh/winterssy/sreq/branch/master/graph/badge.svg) [![Go Report Card](https://goreportcard.com/badge/github.com/winterssy/sreq)](https://goreportcard.com/report/github.com/winterssy/sreq) [![GoDoc](https://godoc.org/github.com/winterssy/sreq?status.svg)](https://godoc.org/github.com/winterssy/sreq) [![License](https://img.shields.io/github/license/winterssy/sreq.svg)](LICENSE)
+![Build](https://img.shields.io/github/workflow/status/winterssy/sreq/Test/master?logo=appveyor) [![codecov](https://codecov.io/gh/winterssy/sreq/branch/master/graph/badge.svg)](https://codecov.io/gh/winterssy/sreq) [![Go Report Card](https://goreportcard.com/badge/github.com/winterssy/sreq)](https://goreportcard.com/report/github.com/winterssy/sreq) [![GoDoc](https://godoc.org/github.com/winterssy/sreq?status.svg)](https://godoc.org/github.com/winterssy/sreq) [![License](https://img.shields.io/github/license/winterssy/sreq.svg)](LICENSE)
 
 ## Notes
 
@@ -22,6 +22,7 @@
 - Automatic cookies management.
 - Request and response interceptors.
 - Reverse proxy.
+- Rate limiter for handling outbound requests.
 - Easy decode responses, raw data, text representation and unmarshal the JSON-encoded data.
 - Export curl command.
 - Friendly debugging.

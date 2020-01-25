@@ -175,7 +175,7 @@ import (
 )
 
 func main() {
-	client := netease.New(nil)
+	client := netease.Client()
 	resp, err := client.GetSong(context.Background(), "36990266")
 	if err != nil {
 		panic(err)

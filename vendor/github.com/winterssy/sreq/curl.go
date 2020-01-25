@@ -47,8 +47,7 @@ func bashEscape(s string) string {
 	return `'` + bashEscaper.Replace(s) + `'`
 }
 
-// GenCURLCommand converts and returns the CURL command line to an *http.Request.
-func GenCURLCommand(req *http.Request) (string, error) {
+func genCURLCommand(req *http.Request) (string, error) {
 	var err error
 	cmd := command{}
 	cmd.append(curlCommand)

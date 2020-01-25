@@ -53,7 +53,6 @@ type (
 		query   Params
 		form    Form
 		headers Headers
-		host    string
 		cookies Cookies
 		retry   *Retry
 		ctx     context.Context
@@ -147,9 +146,9 @@ func (req *Request) SetBody(body io.Reader) *Request {
 	return req
 }
 
-// SetHost sets host for the HTTP request.
+// SetHost sets Host header value for the HTTP request.
 func (req *Request) SetHost(host string) *Request {
-	req.host = host
+	req.headers.Set("Host", host)
 	return req
 }
 
@@ -309,7 +308,7 @@ func (req *Request) SetMultipart(files Files, form Form) *Request {
 			return
 		}
 
-		if form != nil {
+		if len(form) > 0 {
 			setMultipartForm(mw, form)
 		}
 	}()
@@ -349,33 +348,42 @@ func (req *Request) SetContext(ctx context.Context) *Request {
 }
 
 // SetRetry specifies the retry policy for handling retries.
-func (req *Request) SetRetry(retry *Retry) *Request {
-	req.retry = retry
+func (req *Request) SetRetry(maxAttempts int, backoff Backoff, triggers ...func(resp *Response) bool) *Request {
+	if backoff == nil {
+		backoff = DefaultBackoff
+	}
+	req.retry = &Retry{
+		MaxAttempts: maxAttempts,
+		Backoff:     backoff,
+		Triggers:    triggers,
+	}
 	return req
 }
 
 // Decode translates req and returns the equivalent raw HTTP request.
 func (req *Request) Decode() *http.Request {
-	if len(req.query) != 0 {
+	if len(req.query) > 0 {
 		for k, v := range req.URL.Query() {
 			req.query.SetDefault(k, v)
 		}
 		req.URL.RawQuery = req.query.URLEncode(true)
 	}
 
-	if len(req.form) != 0 {
+	if len(req.form) > 0 {
 		req.SetContentType("application/x-www-form-urlencoded")
 		req.SetBody(strings.NewReader(req.form.URLEncode(true)))
 	}
 
 	req.headers.SetDefault("User-Agent", defaultUserAgent)
-	req.Header = req.headers.Decode(true)
-
-	if req.host != "" {
-		req.Host = req.host
+	for k, vs := range req.headers.Decode(true) {
+		if k == "Host" && len(vs) > 0 {
+			req.Host = vs[0]
+		} else {
+			req.Header[k] = vs
+		}
 	}
 
-	if len(req.cookies) != 0 {
+	if len(req.cookies) > 0 {
 		for _, c := range req.cookies.Decode() {
 			req.AddCookie(c)
 		}
@@ -393,9 +401,9 @@ func (req *Request) Dump(withBody bool) ([]byte, error) {
 	return httputil.DumpRequestOut(req.Decode(), withBody)
 }
 
-// Export converts req to CURL command line.
-func (req *Request) Export() (string, error) {
-	return GenCURLCommand(req.Decode())
+// ExportCURLCommand converts req to CURL command line.
+func (req *Request) ExportCURLCommand() (string, error) {
+	return genCURLCommand(req.Decode())
 }
 
 // WithBody is a request option to set body for the HTTP request.
@@ -406,7 +414,7 @@ func WithBody(body io.Reader) RequestOption {
 	}
 }
 
-// WithHost is a request option to set host for the HTTP request.
+// WithHost is a request option to set Host header value for the HTTP request.
 func WithHost(host string) RequestOption {
 	return func(req *Request) error {
 		req.SetHost(host)
@@ -541,9 +549,9 @@ func WithContext(ctx context.Context) RequestOption {
 }
 
 // WithRetry is a request option to specify the retry policy for handling retries.
-func WithRetry(retry *Retry) RequestOption {
+func WithRetry(maxAttempts int, backoff Backoff, triggers ...func(resp *Response) bool) RequestOption {
 	return func(req *Request) error {
-		req.SetRetry(retry)
+		req.SetRetry(maxAttempts, backoff, triggers...)
 		return nil
 	}
 }

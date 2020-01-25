@@ -191,10 +191,6 @@ type (
 )
 
 func New(client *sreq.Client) *API {
-	if client == nil {
-		client = sreq.New()
-		client.OnBeforeRequest(sreq.SetDefaultUserAgent(request.DefaultUserAgent))
-	}
 	return &API{
 		Client: client,
 	}

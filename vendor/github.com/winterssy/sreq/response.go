@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"net/http/httputil"
 	"os"
 
 	"golang.org/x/text/encoding"
@@ -101,6 +102,15 @@ func (resp *Response) XML(v interface{}) error {
 	defer resp.Body.Close()
 
 	return xml.NewDecoder(resp.Body).Decode(v)
+}
+
+// Dump returns the HTTP/1.x wire representation of resp.
+func (resp *Response) Dump(withBody bool) ([]byte, error) {
+	if resp.err != nil {
+		return nil, resp.err
+	}
+
+	return httputil.DumpResponse(resp.Response, withBody)
 }
 
 // Cookies returns the HTTP response cookies.

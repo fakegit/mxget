@@ -1,6 +1,7 @@
 package sreq
 
 import (
+	"bytes"
 	"compress/gzip"
 	"crypto/tls"
 	"crypto/x509"
@@ -8,10 +9,12 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	neturl "net/url"
+	"regexp"
 	"strings"
 	"time"
 
 	"golang.org/x/net/publicsuffix"
+	"golang.org/x/time/rate"
 )
 
 const (
@@ -29,55 +32,47 @@ type (
 	// You should reuse it as possible after initialized.
 	Client struct {
 		*http.Client
+		limiter            *rate.Limiter
+		limitURLPatterns   []*regexp.Regexp
 		beforeRequestHooks []BeforeRequestHook
 		afterResponseHooks []AfterResponseHook
 	}
-
-	// ClientOption provides a convenient way to setup Client.
-	ClientOption func(c *Client) error
 )
 
 // New returns a new Client.
 // It's a clone of GlobalClient indeed.
 func New() *Client {
+	rawClient := &http.Client{
+		Transport: DefaultTransport(),
+		Timeout:   defaultTimeout,
+	}
+	return &Client{
+		Client: rawClient,
+	}
+}
+
+// NewWithSession is like New but with session support.
+func NewWithSession() *Client {
+	client := New()
 	jar, _ := cookiejar.New(&cookiejar.Options{
 		PublicSuffixList: publicsuffix.List,
 	})
-	rawClient := &http.Client{
-		Transport: DefaultTransport(),
-		Jar:       jar,
-		Timeout:   defaultTimeout,
-	}
-	client := &Client{
-		Client: rawClient,
-	}
+	client.SetCookieJar(jar)
 	return client
 }
 
-// NewWithOptions returns a new Client given one or more client options.
-func NewWithOptions(opts ...ClientOption) (*Client, error) {
-	client := New()
-	var err error
-	for _, opt := range opts {
-		if err = opt(client); err != nil {
-			break
-		}
+// NewWithHTTPClient returns a new Client given an *http.Client.
+func NewWithHTTPClient(rawClient *http.Client) *Client {
+	return &Client{
+		Client: rawClient,
 	}
-	return client, err
 }
 
-func (c *Client) httpTransport() (*http.Transport, error) {
-	t, ok := c.Transport.(*http.Transport)
-	if !ok {
-		return nil, ErrUnexpectedTransport
-	}
-
-	return t, nil
-}
-
-// SetHTTPClient replaces the raw HTTP client.
-func (c *Client) SetHTTPClient(rawClient *http.Client) *Client {
-	c.Client = rawClient
+// SetRateLimiter specifies a rate-limiter for c to handle outbound requests.
+// If one or more urlPatterns are specified, only the URL matches one of the patterns will be limited.
+func (c *Client) SetRateLimiter(limiter *rate.Limiter, urlPatterns ...*regexp.Regexp) *Client {
+	c.limiter = limiter
+	c.limitURLPatterns = urlPatterns
 	return c
 }
 
@@ -93,21 +88,18 @@ func (c *Client) SetRedirect(policy func(req *http.Request, via []*http.Request)
 	return c
 }
 
-// DisableRedirect is a retry policy to disable redirects.
-func DisableRedirect(_ *http.Request, _ []*http.Request) error {
+func disableRedirect(_ *http.Request, _ []*http.Request) error {
 	return http.ErrUseLastResponse
+}
+
+// DisableRedirect makes the HTTP client not follow redirects.
+func (c *Client) DisableRedirect() *Client {
+	return c.SetRedirect(disableRedirect)
 }
 
 // SetCookieJar sets cookie jar of the HTTP client.
 func (c *Client) SetCookieJar(jar http.CookieJar) *Client {
 	c.Jar = jar
-	return c
-}
-
-// DisableSession makes the HTTP client not use cookie jar.
-// Only use if you don't want to keep session for the next HTTP request.
-func (c *Client) DisableSession() *Client {
-	c.SetCookieJar(nil)
 	return c
 }
 
@@ -118,88 +110,56 @@ func (c *Client) SetTimeout(timeout time.Duration) *Client {
 }
 
 // SetProxy sets proxy of the HTTP client.
-func (c *Client) SetProxy(proxy func(*http.Request) (*neturl.URL, error)) error {
-	t, err := c.httpTransport()
-	if err != nil {
-		return &Error{
-			Op:  "Client.SetProxy",
-			Err: err,
-		}
+func (c *Client) SetProxy(proxy func(*http.Request) (*neturl.URL, error)) *Client {
+	if t, ok := c.Transport.(*http.Transport); ok && t != nil {
+		t.Proxy = proxy
 	}
-
-	t.Proxy = proxy
-	c.Transport = t
-	return nil
+	return c
 }
 
 // SetProxyFromURL sets proxy of the HTTP client from a URL.
-func (c *Client) SetProxyFromURL(url string) error {
+func (c *Client) SetProxyFromURL(url string) *Client {
 	fixedURL, err := neturl.Parse(url)
-	if err != nil {
-		return &Error{
-			Op:  "Client.SetProxyFromURL",
-			Err: err,
-		}
+	if err == nil {
+		c.SetProxy(http.ProxyURL(fixedURL))
 	}
-
-	return c.SetProxy(http.ProxyURL(fixedURL))
+	return c
 }
 
 // DisableProxy makes the HTTP client not use proxy.
-func (c *Client) DisableProxy() error {
+func (c *Client) DisableProxy() *Client {
 	return c.SetProxy(nil)
 }
 
 // SetTLSClientConfig sets TLS configuration of the HTTP client.
-func (c *Client) SetTLSClientConfig(config *tls.Config) error {
-	t, err := c.httpTransport()
-	if err != nil {
-		return &Error{
-			Op:  "Client.SetTLSClientConfig",
-			Err: err,
-		}
+func (c *Client) SetTLSClientConfig(config *tls.Config) *Client {
+	if t, ok := c.Transport.(*http.Transport); ok && t != nil {
+		t.TLSClientConfig = config
 	}
-
-	t.TLSClientConfig = config
-	c.Transport = t
-	return nil
+	return c
 }
 
 // AppendClientCerts appends client certificates to the HTTP client.
-func (c *Client) AppendClientCerts(certs ...tls.Certificate) error {
-	t, err := c.httpTransport()
-	if err != nil {
-		return &Error{
-			Op:  "Client.AppendClientCerts",
-			Err: err,
+func (c *Client) AppendClientCerts(certs ...tls.Certificate) *Client {
+	if t, ok := c.Transport.(*http.Transport); ok && t != nil {
+		if t.TLSClientConfig == nil {
+			t.TLSClientConfig = &tls.Config{}
 		}
+		t.TLSClientConfig.Certificates = append(t.TLSClientConfig.Certificates, certs...)
 	}
-
-	if t.TLSClientConfig == nil {
-		t.TLSClientConfig = &tls.Config{}
-	}
-
-	t.TLSClientConfig.Certificates = append(t.TLSClientConfig.Certificates, certs...)
-	c.Transport = t
-	return nil
+	return c
 }
 
 // AppendRootCerts appends root certificates from a pem file to the HTTP client.
-func (c *Client) AppendRootCerts(pemFile string) error {
-	pemCerts, err := ioutil.ReadFile(pemFile)
-	if err != nil {
-		return &Error{
-			Op:  "Client.AppendRootCerts",
-			Err: err,
-		}
+func (c *Client) AppendRootCerts(pemFile string) *Client {
+	t, ok := c.Transport.(*http.Transport)
+	if !ok || t == nil {
+		return c
 	}
 
-	t, err := c.httpTransport()
+	pemCerts, err := ioutil.ReadFile(pemFile)
 	if err != nil {
-		return &Error{
-			Op:  "Client.AppendRootCerts",
-			Err: err,
-		}
+		panic(err)
 	}
 
 	if t.TLSClientConfig == nil {
@@ -209,48 +169,31 @@ func (c *Client) AppendRootCerts(pemFile string) error {
 		t.TLSClientConfig.RootCAs = x509.NewCertPool()
 	}
 	t.TLSClientConfig.RootCAs.AppendCertsFromPEM(pemCerts)
-	c.Transport = t
-	return nil
+	return c
 }
 
 // DisableVerify makes the HTTP client not verify the server's TLS certificate.
-func (c *Client) DisableVerify() error {
-	t, err := c.httpTransport()
-	if err != nil {
-		return &Error{
-			Op:  "Client.DisableVerify",
-			Err: err,
+func (c *Client) DisableVerify() *Client {
+	if t, ok := c.Transport.(*http.Transport); ok && t != nil {
+		if t.TLSClientConfig == nil {
+			t.TLSClientConfig = &tls.Config{}
 		}
+		t.TLSClientConfig.InsecureSkipVerify = true
 	}
-
-	if t.TLSClientConfig == nil {
-		t.TLSClientConfig = &tls.Config{}
-	}
-
-	t.TLSClientConfig.InsecureSkipVerify = true
-	c.Transport = t
-	return nil
+	return c
 }
 
 // SetCookies sets cookies to cookie jar for the given URL.
-func (c *Client) SetCookies(url string, cookies ...*http.Cookie) error {
+func (c *Client) SetCookies(url string, cookies ...*http.Cookie) *Client {
 	if c.Jar == nil {
-		return &Error{
-			Op:  "Client.SetCookies",
-			Err: ErrNilCookieJar,
-		}
+		panic(ErrNilCookieJar)
 	}
 
 	u, err := neturl.Parse(url)
-	if err != nil {
-		return &Error{
-			Op:  "Client.SetCookies",
-			Err: err,
-		}
+	if err == nil {
+		c.Jar.SetCookies(u, cookies)
 	}
-
-	c.Jar.SetCookies(u, cookies)
-	return nil
+	return c
 }
 
 // OnBeforeRequest appends request hooks into the before request chain.
@@ -266,18 +209,8 @@ func (c *Client) OnAfterResponse(hooks ...AfterResponseHook) *Client {
 }
 
 // Get makes a GET HTTP request.
-func Get(url string, opts ...RequestOption) *Response {
-	return GlobalClient.Get(url, opts...)
-}
-
-// Get makes a GET HTTP request.
 func (c *Client) Get(url string, opts ...RequestOption) *Response {
 	return c.Send(MethodGet, url, opts...)
-}
-
-// Head makes a HEAD HTTP request.
-func Head(url string, opts ...RequestOption) *Response {
-	return GlobalClient.Head(url, opts...)
 }
 
 // Head makes a HEAD HTTP request.
@@ -286,18 +219,8 @@ func (c *Client) Head(url string, opts ...RequestOption) *Response {
 }
 
 // Post makes a POST HTTP request.
-func Post(url string, opts ...RequestOption) *Response {
-	return GlobalClient.Post(url, opts...)
-}
-
-// Post makes a POST HTTP request.
 func (c *Client) Post(url string, opts ...RequestOption) *Response {
 	return c.Send(MethodPost, url, opts...)
-}
-
-// Put makes a PUT HTTP request.
-func Put(url string, opts ...RequestOption) *Response {
-	return GlobalClient.Put(url, opts...)
 }
 
 // Put makes a PUT HTTP request.
@@ -306,28 +229,13 @@ func (c *Client) Put(url string, opts ...RequestOption) *Response {
 }
 
 // Patch makes a PATCH HTTP request.
-func Patch(url string, opts ...RequestOption) *Response {
-	return GlobalClient.Patch(url, opts...)
-}
-
-// Patch makes a PATCH HTTP request.
 func (c *Client) Patch(url string, opts ...RequestOption) *Response {
 	return c.Send(MethodPatch, url, opts...)
 }
 
 // Delete makes a DELETE HTTP request.
-func Delete(url string, opts ...RequestOption) *Response {
-	return GlobalClient.Delete(url, opts...)
-}
-
-// Delete makes a DELETE HTTP request.
 func (c *Client) Delete(url string, opts ...RequestOption) *Response {
 	return c.Send(MethodDelete, url, opts...)
-}
-
-// Send makes an HTTP request using a specified method.
-func Send(method string, url string, opts ...RequestOption) *Response {
-	return GlobalClient.Send(method, url, opts...)
 }
 
 // Send makes an HTTP request using a specified method.
@@ -394,10 +302,47 @@ func (c *Client) onBeforeRequest(req *Request) error {
 	return err
 }
 
+func (c *Client) shouldLimit(url string) bool {
+	if c.limiter == nil {
+		return false
+	}
+
+	if len(c.limitURLPatterns) == 0 {
+		return true
+	}
+
+	for _, pattern := range c.limitURLPatterns {
+		if pattern.MatchString(url) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func shouldRetry(retry *Retry, resp *Response) bool {
+	if len(retry.Triggers) == 0 {
+		return resp.err != nil
+	}
+
+	var ok bool
+	for _, trigger := range retry.Triggers {
+		if ok = trigger(resp); ok {
+			break
+		}
+	}
+	return ok
+}
+
 func (c *Client) doWithRetry(req *Request, resp *Response) {
-	retry := req.retry.Merge(defaultRetry)
-	if retry.MaxAttempts > 1 && req.Body != nil && req.GetBody == nil {
-		body, err := drainBody(req.Body)
+	if req.retry == nil || req.retry.MaxAttempts <= 0 {
+		req.retry = noRetry
+	}
+
+	var err error
+	if req.retry.MaxAttempts > 1 && req.Body != nil && req.GetBody == nil {
+		var body *bytes.Buffer
+		body, err = drainBody(req.Body)
 		if err != nil {
 			resp.err = err
 			return
@@ -407,15 +352,21 @@ func (c *Client) doWithRetry(req *Request, resp *Response) {
 
 	rawRequest := req.Decode()
 	ctx := rawRequest.Context()
-	var err error
-	for i := 0; i < retry.MaxAttempts; i++ {
+	if c.shouldLimit(rawRequest.URL.String()) {
+		if err = c.limiter.Wait(ctx); err != nil {
+			resp.err = err
+			return
+		}
+	}
+
+	for i := 0; i < req.retry.MaxAttempts; i++ {
 		resp.Response, resp.err = c.do(rawRequest)
 		if err = ctx.Err(); err != nil {
 			resp.err = err
 			return
 		}
 
-		if i == retry.MaxAttempts-1 || !retry.Trigger(resp) {
+		if i == req.retry.MaxAttempts-1 || !shouldRetry(req.retry, resp) {
 			return
 		}
 
@@ -424,7 +375,7 @@ func (c *Client) doWithRetry(req *Request, resp *Response) {
 		}
 
 		select {
-		case <-time.After(req.retry.Backoff(retry.WaitTime, retry.MaxWaitTime, i, resp)):
+		case <-time.After(req.retry.Backoff.WaitTime(i, resp)):
 		case <-ctx.Done():
 			resp.err = ctx.Err()
 			return
@@ -465,123 +416,37 @@ func (c *Client) onAfterResponse(resp *Response) {
 	}
 }
 
-// SetHTTPClient is a client option to replace the raw HTTP client.
-func SetHTTPClient(rawClient *http.Client) ClientOption {
-	return func(c *Client) error {
-		c.SetHTTPClient(rawClient)
-		return nil
-	}
+// Get makes a GET HTTP request.
+func Get(url string, opts ...RequestOption) *Response {
+	return GlobalClient.Get(url, opts...)
 }
 
-// SetTransport is a client option to set transport of the HTTP client.
-func SetTransport(transport http.RoundTripper) ClientOption {
-	return func(c *Client) error {
-		c.SetTransport(transport)
-		return nil
-	}
+// Head makes a HEAD HTTP request.
+func Head(url string, opts ...RequestOption) *Response {
+	return GlobalClient.Head(url, opts...)
 }
 
-// SetRedirect is a client option to set policy of the HTTP client for handling redirects.
-func SetRedirect(policy func(req *http.Request, via []*http.Request) error) ClientOption {
-	return func(c *Client) error {
-		c.SetRedirect(policy)
-		return nil
-	}
+// Post makes a POST HTTP request.
+func Post(url string, opts ...RequestOption) *Response {
+	return GlobalClient.Post(url, opts...)
 }
 
-// SetCookieJar is a client option to set cookie jar of the HTTP client.
-func SetCookieJar(jar http.CookieJar) ClientOption {
-	return func(c *Client) error {
-		c.SetCookieJar(jar)
-		return nil
-	}
+// Put makes a PUT HTTP request.
+func Put(url string, opts ...RequestOption) *Response {
+	return GlobalClient.Put(url, opts...)
 }
 
-// DisableSession is a client option to make the HTTP client not use cookie jar.
-// Only use if you don't want to keep session for the next HTTP request.
-func DisableSession() ClientOption {
-	return func(c *Client) error {
-		c.DisableSession()
-		return nil
-	}
+// Patch makes a PATCH HTTP request.
+func Patch(url string, opts ...RequestOption) *Response {
+	return GlobalClient.Patch(url, opts...)
 }
 
-// SetTimeout is a client option to set timeout of the HTTP client.
-func SetTimeout(timeout time.Duration) ClientOption {
-	return func(c *Client) error {
-		c.SetTimeout(timeout)
-		return nil
-	}
+// Delete makes a DELETE HTTP request.
+func Delete(url string, opts ...RequestOption) *Response {
+	return GlobalClient.Delete(url, opts...)
 }
 
-// SetProxy is a client option to set proxy of the HTTP client.
-func SetProxy(proxy func(*http.Request) (*neturl.URL, error)) ClientOption {
-	return func(c *Client) error {
-		return c.SetProxy(proxy)
-	}
-}
-
-// SetProxyFromURL is a client option to set proxy of the HTTP client from a URL.
-func SetProxyFromURL(url string) ClientOption {
-	return func(c *Client) error {
-		return c.SetProxyFromURL(url)
-	}
-}
-
-// DisableProxy is a client option to make the HTTP client not use proxy.
-func DisableProxy() ClientOption {
-	return func(c *Client) error {
-		return c.DisableProxy()
-	}
-}
-
-// SetTLSClientConfig is a client option to set TLS configuration of the HTTP client.
-func SetTLSClientConfig(config *tls.Config) ClientOption {
-	return func(c *Client) error {
-		return c.SetTLSClientConfig(config)
-	}
-}
-
-// AppendClientCerts is a client option to append client certificates to the HTTP client.
-func AppendClientCerts(certs ...tls.Certificate) ClientOption {
-	return func(c *Client) error {
-		return c.AppendClientCerts(certs...)
-	}
-}
-
-// AppendRootCerts is a client option to append root certificates from a pem file to the HTTP client.
-func AppendRootCerts(pemFile string) ClientOption {
-	return func(c *Client) error {
-		return c.AppendRootCerts(pemFile)
-	}
-}
-
-// DisableVerify is a client option to make the HTTP client not verify the server's TLS certificate.
-func DisableVerify() ClientOption {
-	return func(c *Client) error {
-		return c.DisableVerify()
-	}
-}
-
-// SetCookies is a client option to set cookies to cookie jar for the given URL.
-func SetCookies(url string, cookies ...*http.Cookie) ClientOption {
-	return func(c *Client) error {
-		return c.SetCookies(url, cookies...)
-	}
-}
-
-// OnBeforeRequest is a client option to append request hooks into the before request chain.
-func OnBeforeRequest(hooks ...BeforeRequestHook) ClientOption {
-	return func(c *Client) error {
-		c.OnBeforeRequest(hooks...)
-		return nil
-	}
-}
-
-// OnAfterResponse is a client option to append response hooks into the after response chain.
-func OnAfterResponse(hooks ...AfterResponseHook) ClientOption {
-	return func(c *Client) error {
-		c.OnAfterResponse(hooks...)
-		return nil
-	}
+// Send makes an HTTP request using a specified method.
+func Send(method string, url string, opts ...RequestOption) *Response {
+	return GlobalClient.Send(method, url, opts...)
 }
