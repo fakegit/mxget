@@ -125,7 +125,6 @@ func SetReverseProxy(target string, publicPaths ...string) BeforeRequestHook {
 
 		req.URL.Scheme = u.Scheme
 		req.URL.Host = u.Host
-		req.Host = u.Host
 		req.SetOrigin(target)
 
 		if len(publicPaths) > 0 {

@@ -119,8 +119,7 @@ func (c *Client) SetProxy(proxy func(*http.Request) (*neturl.URL, error)) *Clien
 
 // SetProxyFromURL sets proxy of the HTTP client from a URL.
 func (c *Client) SetProxyFromURL(url string) *Client {
-	fixedURL, err := neturl.Parse(url)
-	if err == nil {
+	if fixedURL, err := neturl.Parse(url); err == nil {
 		c.SetProxy(http.ProxyURL(fixedURL))
 	}
 	return c
@@ -151,24 +150,22 @@ func (c *Client) AppendClientCerts(certs ...tls.Certificate) *Client {
 }
 
 // AppendRootCerts appends root certificates from a pem file to the HTTP client.
+// If there is an error while reading pemFile, it will panic.
 func (c *Client) AppendRootCerts(pemFile string) *Client {
-	t, ok := c.Transport.(*http.Transport)
-	if !ok || t == nil {
-		return c
-	}
+	if t, ok := c.Transport.(*http.Transport); ok && t != nil {
+		pemCerts, err := ioutil.ReadFile(pemFile)
+		if err != nil {
+			panic(err)
+		}
 
-	pemCerts, err := ioutil.ReadFile(pemFile)
-	if err != nil {
-		panic(err)
+		if t.TLSClientConfig == nil {
+			t.TLSClientConfig = &tls.Config{}
+		}
+		if t.TLSClientConfig.RootCAs == nil {
+			t.TLSClientConfig.RootCAs = x509.NewCertPool()
+		}
+		t.TLSClientConfig.RootCAs.AppendCertsFromPEM(pemCerts)
 	}
-
-	if t.TLSClientConfig == nil {
-		t.TLSClientConfig = &tls.Config{}
-	}
-	if t.TLSClientConfig.RootCAs == nil {
-		t.TLSClientConfig.RootCAs = x509.NewCertPool()
-	}
-	t.TLSClientConfig.RootCAs.AppendCertsFromPEM(pemCerts)
 	return c
 }
 
@@ -184,13 +181,13 @@ func (c *Client) DisableVerify() *Client {
 }
 
 // SetCookies sets cookies to cookie jar for the given URL.
+// If the cookie jar is nil, it will panic.
 func (c *Client) SetCookies(url string, cookies ...*http.Cookie) *Client {
 	if c.Jar == nil {
 		panic(ErrNilCookieJar)
 	}
 
-	u, err := neturl.Parse(url)
-	if err == nil {
+	if u, err := neturl.Parse(url); err == nil {
 		c.Jar.SetCookies(u, cookies)
 	}
 	return c
@@ -320,18 +317,22 @@ func (c *Client) shouldLimit(url string) bool {
 	return false
 }
 
-func shouldRetry(retry *Retry, resp *Response) bool {
+func shouldRetry(retry *Retry, attemptNum int, resp *Response) bool {
+	if attemptNum >= retry.MaxAttempts-1 {
+		return false
+	}
+
 	if len(retry.Triggers) == 0 {
 		return resp.err != nil
 	}
 
-	var ok bool
 	for _, trigger := range retry.Triggers {
-		if ok = trigger(resp); ok {
-			break
+		if trigger(resp) {
+			return true
 		}
 	}
-	return ok
+
+	return false
 }
 
 func (c *Client) doWithRetry(req *Request, resp *Response) {
@@ -366,7 +367,7 @@ func (c *Client) doWithRetry(req *Request, resp *Response) {
 			return
 		}
 
-		if i == req.retry.MaxAttempts-1 || !shouldRetry(req.retry, resp) {
+		if !shouldRetry(req.retry, i, resp) {
 			return
 		}
 

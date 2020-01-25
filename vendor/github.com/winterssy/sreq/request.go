@@ -348,6 +348,7 @@ func (req *Request) SetContext(ctx context.Context) *Request {
 }
 
 // SetRetry specifies the retry policy for handling retries.
+// The backoff is optional, default is DefaultBackoff.
 func (req *Request) SetRetry(maxAttempts int, backoff Backoff, triggers ...func(resp *Response) bool) *Request {
 	if backoff == nil {
 		backoff = DefaultBackoff

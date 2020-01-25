@@ -31,13 +31,12 @@ type (
 		// Backoff specifies the backoff of the retry policy. It is called
 		// after a failing request to determine the amount of time
 		// that should pass before trying again.
-		// If the backoff not specified, default is DefaultBackoff.
 		Backoff Backoff
 
 		// Triggers specifies a group of triggers for handling retries. It is called
 		// following each request with the response values returned by Client.
 		// If the triggers not specified, default is the error of resp isn't nil.
-		// Otherwise, the Client will only retry the request when one of the triggers returns true.
+		// Otherwise, the Client will only retry the request when the response meets one of the triggers.
 		Triggers []func(resp *Response) bool
 	}
 
