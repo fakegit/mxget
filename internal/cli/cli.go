@@ -9,7 +9,7 @@ import (
 	"runtime"
 
 	"github.com/bogem/id3v2"
-	"github.com/winterssy/log"
+	"github.com/winterssy/slog"
 	"github.com/winterssy/mxget/internal/settings"
 	"github.com/winterssy/mxget/pkg/api"
 	"github.com/winterssy/mxget/pkg/concurrency"
@@ -21,7 +21,7 @@ import (
 func ConcurrentDownload(ctx context.Context, client provider.API, savePath string, songs ...*api.SongResponse) {
 	savePath = filepath.Join(settings.Cfg.Dir, utils.TrimInvalidFilePathChars(savePath))
 	if err := os.MkdirAll(savePath, 0755); err != nil {
-		log.Fatal(err)
+		slog.Fatal(err)
 	}
 
 	var limit int
@@ -45,17 +45,17 @@ func ConcurrentDownload(ctx context.Context, client provider.API, savePath strin
 			defer c.Done()
 			songInfo := fmt.Sprintf("%s - %s", s.Artist, s.Name)
 			if !s.Playable {
-				log.Errorf("Download [%s] failed: song unavailable", songInfo)
+				slog.Errorf("Download [%s] failed: song unavailable", songInfo)
 				return
 			}
 
 			filePath := filepath.Join(savePath, utils.TrimInvalidFilePathChars(songInfo))
-			log.Infof("Start download [%s]", songInfo)
+			slog.Infof("Start download [%s]", songInfo)
 			mp3FilePath := filePath + ".mp3"
 			if !settings.Force {
 				_, err := os.Stat(mp3FilePath)
 				if err == nil {
-					log.Infof("Song already downloaded: [%s]", songInfo)
+					slog.Infof("Song already downloaded: [%s]", songInfo)
 					return
 				}
 			}
@@ -66,19 +66,19 @@ func ConcurrentDownload(ctx context.Context, client provider.API, savePath strin
 				).
 				Save(mp3FilePath, 0664)
 			if err != nil {
-				log.Errorf("Download [%s] failed: %v", songInfo, err)
+				slog.Errorf("Download [%s] failed: %v", songInfo, err)
 				_ = os.Remove(mp3FilePath)
 				return
 			}
-			log.Infof("Download [%s] complete", songInfo)
+			slog.Infof("Download [%s] complete", songInfo)
 
 			if settings.Tag {
-				log.Infof("Update music metadata: [%s]", songInfo)
+				slog.Infof("Update music metadata: [%s]", songInfo)
 				writeTag(ctx, client, mp3FilePath, s)
 			}
 
 			if settings.Lyric && s.Lyric != "" {
-				log.Infof("Save lyric: [%s]", songInfo)
+				slog.Infof("Save lyric: [%s]", songInfo)
 				lrcFilePath := filePath + ".lrc"
 				saveLyric(lrcFilePath, s.Lyric)
 			}

@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/winterssy/log"
+	"github.com/winterssy/slog"
 	"github.com/winterssy/mxget/pkg/provider"
 )
 
@@ -39,7 +39,7 @@ func Init() {
 	err := Cfg.setup()
 	if err != nil {
 		_ = Cfg.Save()
-		log.Fatalf("Initialize config failed, reset to defaults: %v", err)
+		slog.Fatalf("Initialize config failed, reset to defaults: %v", err)
 	}
 }
 
